@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQL 로그 비교기</title>
+<style>
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --text:#1d2330; --muted:#667085; --line:#d9dde3;
+  --diff-bg:#ffd5d2; --diff-fg:#7d1810; --allow-bg:#d4e4ff; --allow-fg:#10397f;
+  --ok:#11703a; --okbg:#d9f2e2; --warn:#7a5000; --warnbg:#fff0c7; --err:#9c1419; --errbg:#fcdcdc;
+  --hint:#6f45ad; --mono: Consolas, "D2Coding", "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14171c; --panel:#1c2027; --text:#e4e7ec; --muted:#98a2b3; --line:#323844;
+    --diff-bg:#5e201c; --diff-fg:#ffd5d2; --allow-bg:#1c355f; --allow-fg:#d4e4ff;
+    --ok:#6fd49a; --okbg:#163723; --warn:#f3c55b; --warnbg:#3b3014; --err:#ff9d9d; --errbg:#4a1a1a; --hint:#c3a6f0;
+  }
+}
+:root{--accent:#2563d9;--accent-bg:#e3ecfd;--code-bg:#fafbfc}
+@media (prefers-color-scheme: dark){:root{--accent:#7aa7ff;--accent-bg:#1b2c4d;--code-bg:#171a20}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif}
+.top{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 24px}
+.brand{display:flex;align-items:baseline;gap:8px;margin-right:8px}
+h1{font-size:18px;margin:0}
+.ver{color:var(--muted);font-size:12px}
+.actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+.wrap{padding:20px 24px 40px}
+.sub{color:var(--muted);margin:0 0 16px;font-size:13px}
+h2{font-size:15px;margin:0 0 10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:900px){.grid{grid-template-columns:1fr}.top{padding:10px 16px}.wrap{padding:16px}.actions{margin-left:0}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+label.side{font-weight:700;display:block;margin-bottom:8px;font-size:15px}
+textarea{width:100%;height:34vh;min-height:220px;resize:vertical;font:14px/1.5 var(--mono);background:var(--code-bg);color:var(--text);
+  border:1px solid var(--line);border-radius:8px;padding:12px;tab-size:4}
+textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.muted{color:var(--muted);font-size:13px}
+.toggle{position:relative;display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:2px solid var(--line);
+  border-radius:999px;cursor:pointer;user-select:none;font-weight:700;background:var(--panel)}
+.toggle input{position:absolute;opacity:0;width:0;height:0}
+.track{width:38px;height:22px;border-radius:999px;background:var(--line);position:relative;transition:background .15s;flex:none}
+.knob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.toggle .ts{font-weight:600;font-size:13px;color:var(--muted)}
+.toggle.on{border-color:var(--accent);background:var(--accent-bg);color:var(--accent)}
+.toggle.on .track{background:var(--accent)}
+.toggle.on .knob{left:19px}
+.toggle.on .ts{color:var(--accent)}
+.toggle input:focus-visible + .track{outline:2px solid var(--accent);outline-offset:2px}
+.btn{padding:8px 18px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-weight:700;cursor:pointer}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.verdict{padding:7px 18px;border-radius:999px;font-weight:800;font-size:16px}
+.v-idle{background:var(--line);color:var(--muted)}
+.v-same{background:var(--okbg);color:var(--ok)}
+.v-allow{background:var(--allow-bg);color:var(--allow-fg)}
+.v-diff{background:var(--diff-bg);color:var(--diff-fg)}
+.v-err{background:var(--errbg);color:var(--err)}
+.types{color:var(--muted);font-size:13px}
+.msg{border-radius:8px;padding:10px 14px;margin:0 0 16px}
+.msg.warn{background:var(--warnbg);color:var(--warn)}
+.msg.err{background:var(--errbg);color:var(--err)}
+pre.out{margin:0;min-height:120px;max-height:65vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font:14px/1.6 var(--mono);
+  background:var(--code-bg);border-radius:8px;padding:12px}
+.d{background:var(--diff-bg);color:var(--diff-fg);border-radius:3px}
+.al{background:var(--allow-bg);color:var(--allow-fg);border-radius:3px;border-bottom:1px dashed currentColor}
+.hint{color:var(--hint);font-style:italic}
+.inv{outline:1px solid var(--err);color:var(--err);border-radius:2px}
+.gap{background:var(--diff-bg);color:var(--diff-fg);border-radius:3px;padding:0 2px}
+.flash{animation:fl 1.2s ease-out}
+@keyframes fl{0%{outline:3px solid #f5a623}100%{outline:3px solid transparent}}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:12px 0 0}
+.legend span.sw{display:inline-block;padding:0 6px;border-radius:3px;margin-right:4px}
+.block{margin-top:20px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600;white-space:nowrap}
+td.code{font:13.5px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all;max-width:0}
+details > summary{cursor:pointer;font-weight:700;font-size:15px;list-style-position:inside}
+details[open] > summary{margin-bottom:10px}
+td.num{text-align:right;white-space:nowrap}
+tr.click{cursor:pointer}
+tr.click:hover{background:var(--bg)}
+.kind-d{color:var(--diff-fg);background:var(--diff-bg);padding:1px 6px;border-radius:4px;white-space:nowrap}
+.kind-a{color:var(--allow-fg);background:var(--allow-bg);padding:1px 6px;border-radius:4px;white-space:nowrap}
+ul.no{margin:6px 0 0;padding-left:20px;color:var(--muted)}
+code{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><h1>SQL 로그 비교기</h1><span class="ver" id="ver"></span></div>
+  <div id="verdict" class="verdict v-idle">입력 대기</div>
+  <span id="types" class="types"></span>
+  <div class="actions">
+    <label class="toggle" id="toggleWrap" title="양쪽 모두 INSERT면 자동으로 켜집니다">
+      <input type="checkbox" id="ignoreValues"><span class="track"><span class="knob"></span></span>
+      <span>값 무시</span><span class="ts" id="toggleState">꺼짐</span>
+    </label>
+    <button type="button" class="btn" id="resetBtn">초기화</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <p class="sub">ASIS·TOBE SQL 로그가 같은 쿼리인지 비교합니다. 입력한 SQL은 저장하거나 외부로 보내지 않습니다.</p>
+
+  <div class="grid">
+    <div class="card"><label class="side" for="asis">ASIS</label>
+      <textarea id="asis" spellcheck="false" placeholder="ASIS SQL 로그를 붙여 넣으세요"></textarea></div>
+    <div class="card"><label class="side" for="tobe">TOBE</label>
+      <textarea id="tobe" spellcheck="false" placeholder="TOBE SQL 로그를 붙여 넣으세요"></textarea></div>
+  </div>
+
+  <div id="messages" class="block"></div>
+
+  <div class="grid">
+    <div class="card"><h2>ASIS 정규화 결과</h2><pre class="out" id="outA"></pre></div>
+    <div class="card"><h2>TOBE 정규화 결과</h2><pre class="out" id="outB"></pre></div>
+  </div>
+  <div class="legend">
+    <span><span class="sw d">다름</span>한쪽에만 있거나 내용이 다른 부분</span>
+    <span><span class="sw al">허용</span>허용 규칙·값 무시로 같다고 본 부분 (내용은 다름)</span>
+    <span><span class="sw gap">▸</span>반대편에만 내용이 있는 위치</span>
+  </div>
+
+  <section class="card block"><h2>차이 목록</h2><div id="diffList" class="muted">-</div></section>
+  <details class="card block" open><summary>적용 규칙</summary><div id="rules"></div></details>
+</div>
+
+<script>
+'use strict';
+const VERSION = 'v0.2';
+
+/* ===== 공통 차이 허용 규칙 =====
+   공통 차이가 늘어나면 이 목록에 추가한다.
+   적용 위치: UPDATE의 SET 절, INSERT의 컬럼-값 짝. WHERE 절에는 적용하지 않는다.
+   match(asis, tobe): 해당 컬럼 값 자리의 토큰 배열 (type: word | string | number | qident | hint | op | punct | invisible)
+*/
+const ALLOWED_RULES = [
+  { id: 'A1', column: 'UPDATE_DATE',
+    desc: 'TOBE 값이 SYSDATE면 ASIS 값과 관계없이 허용',
+    match: (a, t) => t.length === 1 && t[0].type === 'word' && t[0].norm === 'SYSDATE' },
+  { id: 'A2', column: 'UPDATE_MAN',
+    desc: '양쪽 값이 모두 문자열 하나면 허용 (ASIS 사용자명 → TOBE 사용자 ID)',
+    match: (a, t) => a.length === 1 && a[0].type === 'string' && t.length === 1 && t[0].type === 'string' },
+];
+
+/* ===== 토큰화 ===== */
+class SqlError extends Error {}
+const WS = new Set([' ', '\t', '\r', '\n']);           // 공백으로 인정하는 문자는 이 4개뿐
+const PAIR = { '[': ']', '(': ')', '{': '}', '<': '>' };
+const NUM = /(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/y;
+const WORD_START = /[\p{L}_]/u;
+const WORD_CHAR = /[\p{L}\p{N}_$#]/u;
+const INVISIBLE = /[\p{Z}\p{C}]/u;
+
+function lineOf(src, pos) { let n = 1; for (let i = 0; i < pos; i++) if (src[i] === '\n') n++; return n; }
+
+function scanString(src, i) {            // src[i] === "'" , '' 는 이스케이프
+  let j = i + 1;
+  for (;;) {
+    const k = src.indexOf("'", j);
+    if (k < 0) throw new SqlError(`닫히지 않은 문자열 ' (${lineOf(src, i)}번째 줄)`);
+    if (src[k + 1] === "'") { j = k + 2; continue; }
+    return k + 1;
+  }
+}
+
+function tokenize(src) {
+  const toks = [];
+  const st = { comment: 0, hint: 0, upper: 0, string: 0, opMerge: 0, semicolon: 0, invisible: 0 };
+  const inv = [];
+  const n = src.length;
+  let i = 0;
+  const push = (type, norm, raw) => toks.push({ type, norm, raw });
+
+  while (i < n) {
+    const c = src[i], c1 = src[i + 1];
+    if (WS.has(c)) { i++; continue; }
+
+    // 주석: 개행 처리보다 먼저, 따옴표 밖에서만
+    if (c === '-' && c1 === '-') {
+      const e = src.indexOf('\n', i); i = e < 0 ? n : e; st.comment++; continue;
+    }
+    if (c === '/' && c1 === '*') {
+      const e = src.indexOf('*/', i + 2);
+      if (e < 0) throw new SqlError(`닫히지 않은 주석 /* (${lineOf(src, i)}번째 줄)`);
+      if (src[i + 2] === '+') {          // 옵티마이저 힌트는 지우지 않는다
+        const inner = src.slice(i + 3, e).replace(/[ \t\r\n]+/g, ' ').trim().toUpperCase();
+        push('hint', inner ? `/*+ ${inner} */` : '/*+ */', src.slice(i, e + 2)); st.hint++;
+      } else st.comment++;
+      i = e + 2; continue;
+    }
+
+    // q-quote 문자열: q'[...]' , nq'[...]'
+    let q = -1;
+    if ((c === 'q' || c === 'Q') && c1 === "'") q = i;
+    else if ((c === 'n' || c === 'N') && (c1 === 'q' || c1 === 'Q') && src[i + 2] === "'") q = i + 1;
+    if (q >= 0) {
+      const open = src[q + 2];
+      if (open === undefined) throw new SqlError(`닫히지 않은 문자열 q' (${lineOf(src, i)}번째 줄)`);
+      const close = PAIR[open] || open;
+      const k = src.indexOf(close + "'", q + 3);
+      if (k < 0) throw new SqlError(`닫히지 않은 문자열 q' (${lineOf(src, i)}번째 줄)`);
+      const raw = src.slice(i, k + 2), pre = q + 2 - i;
+      push('string', raw.slice(0, pre).toUpperCase() + raw.slice(pre), raw); st.string++;
+      i = k + 2; continue;
+    }
+    // N'...' 문자열
+    if ((c === 'n' || c === 'N') && c1 === "'") {
+      const j = scanString(src, i + 1), raw = src.slice(i, j);
+      push('string', 'N' + raw.slice(1), raw); st.string++; i = j; continue;
+    }
+    // 일반 문자열: 원문 그대로
+    if (c === "'") {
+      const j = scanString(src, i), raw = src.slice(i, j);
+      push('string', raw, raw); st.string++; i = j; continue;
+    }
+    // 큰따옴표 식별자: 대소문자 유지
+    if (c === '"') {
+      const k = src.indexOf('"', i + 1);
+      if (k < 0) throw new SqlError(`닫히지 않은 큰따옴표 " (${lineOf(src, i)}번째 줄)`);
+      const raw = src.slice(i, k + 1); push('qident', raw, raw); i = k + 1; continue;
+    }
+    // 숫자: 형식 통일하지 않음
+    if ((c >= '0' && c <= '9') || (c === '.' && c1 >= '0' && c1 <= '9')) {
+      NUM.lastIndex = i; const m = NUM.exec(src);
+      push('number', m[0], m[0]); i += m[0].length; continue;
+    }
+    // 단어: 대문자 통일
+    if (WORD_START.test(c)) {
+      let j = i + 1; while (j < n && WORD_CHAR.test(src[j])) j++;
+      const raw = src.slice(i, j), norm = raw.toUpperCase();
+      if (norm !== raw) st.upper++;
+      push('word', norm, raw); i = j; continue;
+    }
+    // 연산자: < > , > = , < = , ! = 는 사이 공백을 붙인다
+    if (c === '<' || c === '>' || c === '!') {
+      let j = i + 1; while (j < n && WS.has(src[j])) j++;
+      const d = src[j];
+      let op = null;
+      if (c === '<' && (d === '>' || d === '=')) op = c + d;
+      else if (c === '>' && d === '=') op = '>=';
+      else if (c === '!' && d === '=') op = '!=';
+      if (op) { if (j > i + 1) st.opMerge++; push('op', op, op); i = j + 1; continue; }
+      push('op', c, c); i++; continue;
+    }
+    if ((c === '^' && c1 === '=') || (c === '|' && c1 === '|') || (c === ':' && c1 === '=') || (c === '=' && c1 === '>')) {
+      push('op', c + c1, c + c1); i += 2; continue;
+    }
+    // 그 외 보이지 않는 문자: 지우지 않고 표시
+    const cp = src.codePointAt(i), ch = String.fromCodePoint(cp);
+    if (INVISIBLE.test(ch)) {
+      const code = 'U+' + cp.toString(16).toUpperCase().padStart(4, '0');
+      push('invisible', `[${code}]`, `[${code}]`); st.invisible++; inv.push({ code, line: lineOf(src, i) });
+      i += ch.length; continue;
+    }
+    push('punct', ch, ch); i += ch.length;
+  }
+
+  // 끝의 ; 하나만 무시
+  if (toks.length && toks[toks.length - 1].norm === ';') { toks.pop(); st.semicolon = 1; }
+
+  let depth = 0;
+  for (const t of toks) {
+    if (t.norm === ')') { depth = Math.max(0, depth - 1); t.depth = depth; }
+    else { t.depth = depth; if (t.norm === '(') depth++; }
+  }
+  return { toks, st, inv };
+}
+
+function firstWord(toks) { const t = toks.find(x => x.type === 'word'); return t ? t.norm : ''; }
+
+/* ===== 컬럼-값 자리 찾기 (UPDATE SET, INSERT VALUES) ===== */
+function splitTop(toks, from, to, depth) {
+  const out = []; let s = from;
+  for (let i = from; i < to; i++) if (toks[i].norm === ',' && toks[i].depth === depth) { out.push({ from: s, to: i }); s = i + 1; }
+  out.push({ from: s, to });
+  return out;
+}
+function nameOf(t) {
+  if (t.type === 'word') return t.norm;
+  if (t.type === 'qident') return t.raw.slice(1, -1);
+  return null;
+}
+function columnName(toks, from, to) {    // COL 또는 ALIAS.COL
+  if (to <= from) return null;
+  for (let i = from; i < to; i++) {
+    const t = toks[i], even = (i - from) % 2 === 0;
+    if (even ? !nameOf(t) : t.norm !== '.') return null;
+  }
+  if ((to - from) % 2 === 0) return null;
+  return nameOf(toks[to - 1]);
+}
+function findSlots(toks, type) {
+  const map = new Map(), valueRanges = [];
+  if (type === 'UPDATE') {
+    const s = toks.findIndex(t => t.depth === 0 && t.type === 'word' && t.norm === 'SET');
+    if (s < 0) return { map, valueRanges };
+    let end = toks.length;
+    for (let i = s + 1; i < toks.length; i++)
+      if (toks[i].depth === 0 && toks[i].type === 'word' && (toks[i].norm === 'WHERE' || toks[i].norm === 'RETURNING')) { end = i; break; }
+    for (const r of splitTop(toks, s + 1, end, 0)) {
+      let eq = -1;
+      for (let i = r.from; i < r.to; i++) if (toks[i].depth === 0 && toks[i].norm === '=') { eq = i; break; }
+      if (eq < 0) continue;
+      const col = columnName(toks, r.from, eq);
+      if (col) map.set(col, { from: eq + 1, to: r.to });
+      valueRanges.push({ from: eq + 1, to: r.to });
+    }
+  } else if (type === 'INSERT') {
+    const v = toks.findIndex(t => t.depth === 0 && t.type === 'word' && t.norm === 'VALUES');
+    if (v < 0 || !toks[v + 1] || toks[v + 1].norm !== '(') return { map, valueRanges };
+    let close = -1;
+    for (let i = v + 2; i < toks.length; i++) if (toks[i].norm === ')' && toks[i].depth === 0) { close = i; break; }
+    if (close < 0) return { map, valueRanges };
+    const vals = splitTop(toks, v + 2, close, 1);
+    valueRanges.push(...vals);
+    if (toks[v - 1] && toks[v - 1].norm === ')') {
+      let open = -1;
+      for (let i = v - 2; i >= 0; i--) if (toks[i].norm === '(' && toks[i].depth === 0) { open = i; break; }
+      if (open >= 0) {
+        const cols = splitTop(toks, open + 1, v - 1, 1);
+        if (cols.length === vals.length)
+          cols.forEach((c, k) => { const name = columnName(toks, c.from, c.to); if (name) map.set(name, vals[k]); });
+      }
+    }
+  }
+  return { map, valueRanges };
+}
+
+/* ===== 비교 단위 만들기 ===== */
+function buildUnits(toks, groups, valueIgnore) {
+  const units = []; let i = 0;
+  while (i < toks.length) {
+    const g = groups.get(i);
+    if (g) { units.push({ kind: g.kind, key: g.key, label: g.label, toks: toks.slice(i, g.to) }); i = g.to; continue; }
+    const t = toks[i];
+    if (valueIgnore && (t.type === 'string' || t.type === 'number')) {
+      units.push({ kind: 'value', key: '<값>', label: '값 무시', toks: [t] }); i++; continue;
+    }
+    if (valueIgnore && t.norm === '{') {   // {ts '...'} 같은 이스케이프 값
+      let lv = 0, j = -1;
+      for (let k = i; k < toks.length; k++) {
+        if (toks[k].norm === '{') lv++;
+        else if (toks[k].norm === '}' && --lv === 0) { j = k; break; }
+      }
+      if (j > 0) { units.push({ kind: 'value', key: '<값>', label: '값 무시', toks: toks.slice(i, j + 1) }); i = j + 1; continue; }
+    }
+    units.push({ kind: 'tok', key: t.norm, toks: [t] }); i++;
+  }
+  return units;
+}
+
+/* ===== LCS diff ===== */
+function lcsDiff(A, B) {
+  const ops = []; let p = 0;
+  while (p < A.length && p < B.length && A[p] === B[p]) { ops.push({ t: 'eq', a: p, b: p }); p++; }
+  let s = 0;
+  while (s < A.length - p && s < B.length - p && A[A.length - 1 - s] === B[B.length - 1 - s]) s++;
+  const n = A.length - p - s, m = B.length - p - s;
+  if ((n + 1) * (m + 1) > 20e6) throw new SqlError('쿼리 차이가 너무 커서 비교할 수 없습니다');
+  const W = m + 1, dp = new Uint16Array((n + 1) * W);
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i * W + j] = A[p + i] === B[p + j] ? dp[(i + 1) * W + j + 1] + 1 : Math.max(dp[(i + 1) * W + j], dp[i * W + j + 1]);
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && A[p + i] === B[p + j]) { ops.push({ t: 'eq', a: p + i, b: p + j }); i++; j++; }
+    else if (j >= m || (i < n && dp[(i + 1) * W + j] >= dp[i * W + j + 1])) { ops.push({ t: 'del', a: p + i, b: p + j }); i++; }
+    else { ops.push({ t: 'ins', a: p + i, b: p + j }); j++; }
+  }
+  for (let k = 0; k < s; k++) ops.push({ t: 'eq', a: A.length - s + k, b: B.length - s + k });
+  return ops;
+}
+
+/* ===== 비교 ===== */
+function normKey(toks) { return toks.map(t => t.norm).join('\u0001'); }
+
+function compare(aText, bText, valueIgnore) {
+  const sides = [aText, bText].map((text, idx) => {
+    const name = idx ? 'TOBE' : 'ASIS';
+    if (!text.trim()) return { error: `${name}: 입력이 비었습니다` };
+    try { const r = tokenize(text); if (!r.toks.length) return { error: `${name}: SQL이 없습니다 (주석만 있음)` }; return r; }
+    catch (e) { if (e instanceof SqlError) return { error: `${name}: ${e.message}` }; throw e; }
+  });
+  const errors = sides.filter(s => s.error).map(s => s.error);
+  if (errors.length) return { verdict: 'error', errors };
+  const [A, B] = sides;
+  const typeA = firstWord(A.toks), typeB = firstWord(B.toks);
+
+  const slotsA = findSlots(A.toks, typeA), slotsB = findSlots(B.toks, typeB);
+  const gA = new Map(), gB = new Map(), ruleHits = {};
+  if (typeA === typeB && (typeA === 'UPDATE' || typeA === 'INSERT')) {
+    for (const r of ALLOWED_RULES) {
+      const sa = slotsA.map.get(r.column), sb = slotsB.map.get(r.column);
+      if (!sa || !sb || sa.to <= sa.from || sb.to <= sb.from) continue;
+      if (!r.match(A.toks.slice(sa.from, sa.to), B.toks.slice(sb.from, sb.to))) continue;
+      const g = { kind: 'allow', key: '<허용:' + r.column + '>', label: `${r.id} ${r.column}` };
+      gA.set(sa.from, { ...g, to: sa.to }); gB.set(sb.from, { ...g, to: sb.to });
+      ruleHits[r.id] = (ruleHits[r.id] || 0) + 1;
+    }
+  }
+  if (valueIgnore) {
+    if (typeA === 'INSERT') for (const r of slotsA.valueRanges) if (r.to > r.from && !gA.has(r.from)) gA.set(r.from, { to: r.to, kind: 'value', key: '<값>', label: '값 무시' });
+    if (typeB === 'INSERT') for (const r of slotsB.valueRanges) if (r.to > r.from && !gB.has(r.from)) gB.set(r.from, { to: r.to, kind: 'value', key: '<값>', label: '값 무시' });
+  }
+  const uA = buildUnits(A.toks, gA, valueIgnore), uB = buildUnits(B.toks, gB, valueIgnore);
+
+  let ops;
+  try { ops = lcsDiff(uA.map(u => u.key), uB.map(u => u.key)); }
+  catch (e) { if (e instanceof SqlError) return { verdict: 'error', errors: [e.message] }; throw e; }
+
+  const hunks = [], allows = []; let cur = null;
+  for (const op of ops) {
+    if (op.t === 'eq') {
+      cur = null;
+      const ua = uA[op.a], ub = uB[op.b];
+      if (ua.kind !== 'tok' && normKey(ua.toks) !== normKey(ub.toks)) {
+        const id = 'w' + allows.length;
+        ua.mark = ub.mark = 'allow'; ua.id = ub.id = id;
+        allows.push({ id, label: ua.label, a: [ua], b: [ub] });
+      }
+      continue;
+    }
+    if (!cur) { cur = { id: 'h' + hunks.length, a: [], b: [], aPos: op.a, bPos: op.b }; hunks.push(cur); }
+    if (op.t === 'del') { const u = uA[op.a]; u.mark = 'diff'; u.hid = cur.id; cur.a.push(u); }
+    else { const u = uB[op.b]; u.mark = 'diff'; u.hid = cur.id; cur.b.push(u); }
+  }
+
+  const verdict = hunks.length ? 'diff' : allows.length ? 'allow' : 'same';
+  const valueGroups = [uA, uB].map(us => us.filter(u => u.kind === 'value').length);
+  return { verdict, typeA, typeB, uA, uB, hunks, allows, stA: A.st, stB: B.st, invA: A.inv, invB: B.inv, ruleHits, valueGroups };
+}
+
+/* ===== 화면 ===== */
+const BREAK = new Set(['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'GROUP', 'ORDER', 'HAVING', 'UNION', 'MINUS', 'INTERSECT', 'SET', 'VALUES']);
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function sepBefore(prev, t, multiline) {
+  if (!prev) return '';
+  if (multiline && t.type === 'word' && BREAK.has(t.norm) && prev.norm !== '(')
+    return '\n' + '  '.repeat(t.depth + (t.norm === 'AND' || t.norm === 'OR' ? 1 : 0));
+  if (prev.norm === '(' || prev.norm === '.' || t.norm === ')' || t.norm === ',' || t.norm === '.') return '';
+  if (t.norm === '(' && (prev.type === 'word' || prev.type === 'qident')) return '';
+  return ' ';
+}
+function tokHtml(t) {
+  const cls = t.type === 'hint' ? 'hint' : t.type === 'invisible' ? 'inv' : '';
+  const text = (t.type === 'string' || t.type === 'qident') ? t.raw : t.norm;
+  return cls ? `<span class="${cls}">${esc(text)}</span>` : esc(text);
+}
+function inlineText(units) {
+  let s = '', prev = null;
+  for (const u of units) for (const t of u.toks) { s += sepBefore(prev, t, false) + ((t.type === 'string' || t.type === 'qident') ? t.raw : t.norm); prev = t; }
+  return s;
+}
+function renderSide(units, hunks, side) {
+  const markers = new Map();
+  for (const h of hunks) {
+    const empty = side === 'a' ? h.a.length === 0 : h.b.length === 0;
+    if (empty) { const pos = side === 'a' ? h.aPos : h.bPos; if (!markers.has(pos)) markers.set(pos, []); markers.get(pos).push(h.id); }
+  }
+  const used = new Set(); let html = '', prev = null;
+  const gap = k => (markers.get(k) || []).map(id => `<span class="gap" id="${side}-${id}" title="반대편에만 있는 부분">▸</span>`).join('');
+  units.forEach((u, k) => {
+    html += gap(k);
+    let inner = '';
+    u.toks.forEach((t, x) => {
+      const sep = sepBefore(prev, t, true);
+      if (x === 0) html += sep; else inner += sep;
+      inner += tokHtml(t); prev = t;
+    });
+    if (u.mark === 'diff' || u.mark === 'allow') {
+      const ref = u.mark === 'diff' ? u.hid : u.id;
+      const idAttr = used.has(ref) ? '' : ` id="${side}-${ref}"`; used.add(ref);
+      const title = u.mark === 'allow' ? ` title="${esc(u.label)}"` : '';
+      html += `<span class="${u.mark === 'diff' ? 'd' : 'al'}"${idAttr}${title}>${inner}</span>`;
+    } else html += inner;
+  });
+  html += gap(units.length);
+  return html;
+}
+
+function ruleRows(r) {
+  const dash = '-';
+  const a = r ? r.stA : null, b = r ? r.stB : null, v = (s, k) => s ? String(s[k]) : dash;
+  const rows = [
+    ['N1', '주석 제거 (<code>--</code>, <code>/* */</code>). 따옴표 안은 주석으로 보지 않음', v(a, 'comment'), v(b, 'comment')],
+    ['N2', '힌트 <code>/*+ */</code>는 지우지 않고 비교 (힌트 안 공백 정리·대문자)', v(a, 'hint'), v(b, 'hint')],
+    ['N3', '공백·탭·개행(space, tab, CR, LF)은 구분자로만 사용', dash, dash],
+    ['N4', '따옴표 밖 단어는 대문자로 통일 (큰따옴표 식별자는 그대로)', v(a, 'upper'), v(b, 'upper')],
+    ['N5', '문자열 리터럴은 원문 그대로 비교 (<code>\'\'</code> 이스케이프 포함)', v(a, 'string'), v(b, 'string')],
+    ['N6', '연산자 사이 공백 붙임: <code>&lt; &gt;</code>→<code>&lt;&gt;</code>, <code>&gt; =</code>→<code>&gt;=</code>, <code>&lt; =</code>→<code>&lt;=</code>, <code>! =</code>→<code>!=</code>', v(a, 'opMerge'), v(b, 'opMerge')],
+    ['N7', '끝의 <code>;</code> 하나는 무시', v(a, 'semicolon'), v(b, 'semicolon')],
+    ['N8', '그 외 보이지 않는 문자(NBSP, 전각 공백 등)는 지우지 않고 <code>[U+XXXX]</code>로 표시해 비교', v(a, 'invisible'), v(b, 'invisible')],
+  ];
+  for (const ar of ALLOWED_RULES) {
+    const hit = r && r.ruleHits ? String(r.ruleHits[ar.id] || 0) : dash;
+    rows.push([ar.id, `<code>${esc(ar.column)}</code>: ${esc(ar.desc)}. UPDATE SET 절, INSERT 컬럼-값 짝에서만 적용`, hit, hit]);
+  }
+  const vg = r && r.valueGroups ? r.valueGroups : null;
+  rows.push(['V1', '값 무시(체크 시): INSERT는 VALUES의 값 자리 전체, 그 외는 문자열·숫자·<code>{ }</code> 값을 "값"으로만 비교', vg ? String(vg[0]) : dash, vg ? String(vg[1]) : dash]);
+  return rows;
+}
+function renderRules(r) {
+  const rows = ruleRows(r).map(x => `<tr><td>${x[0]}</td><td>${x[1]}</td><td class="num">${x[2]}</td><td class="num">${x[3]}</td></tr>`).join('');
+  document.getElementById('rules').innerHTML =
+    `<table><thead><tr><th>ID</th><th>규칙</th><th>ASIS 적용</th><th>TOBE 적용</th></tr></thead><tbody>${rows}</tbody></table>
+     <div class="muted" style="margin-top:8px">하지 않는 것</div>
+     <ul class="no">
+       <li>값 형식 통일 (<code>'10'</code>과 <code>10</code>, <code>1.0</code>과 <code>1</code>은 다름)</li>
+       <li>컬럼·조건 순서 재배열</li>
+       <li>의미가 같은 다른 표현 통일 (<code>!=</code>와 <code>&lt;&gt;</code>, alias, JOIN 문법, NVL·COALESCE)</li>
+       <li>WHERE 절에 허용 규칙 적용</li>
+     </ul>`;
+}
+
+function render(r) {
+  const $ = id => document.getElementById(id);
+  const vd = $('verdict'), msg = $('messages');
+  msg.innerHTML = ''; $('types').textContent = '';
+  if (!r) {
+    vd.className = 'verdict v-idle'; vd.textContent = '입력 대기';
+    $('outA').innerHTML = $('outB').innerHTML = ''; $('diffList').innerHTML = '-'; renderRules(null); return;
+  }
+  if (r.verdict === 'error') {
+    vd.className = 'verdict v-err'; vd.textContent = '오류';
+    msg.innerHTML = r.errors.map(e => `<div class="msg err">${esc(e)}</div>`).join('');
+    $('outA').innerHTML = $('outB').innerHTML = ''; $('diffList').innerHTML = '-'; renderRules(null); return;
+  }
+  const label = { same: '같음', allow: `같음 (허용 차이 ${r.allows.length}건)`, diff: `다름 (${r.hunks.length}곳)` }[r.verdict];
+  vd.className = 'verdict ' + { same: 'v-same', allow: 'v-allow', diff: 'v-diff' }[r.verdict];
+  vd.textContent = label;
+  $('types').textContent = `ASIS ${r.typeA || '?'} · TOBE ${r.typeB || '?'}`;
+
+  const invMsg = (name, inv) => {
+    if (!inv.length) return '';
+    const by = {}; inv.forEach(x => { (by[x.code] = by[x.code] || []).push(x.line); });
+    const parts = Object.entries(by).map(([c, ls]) => `${c} ${ls.length}개 (${[...new Set(ls)].join(', ')}번째 줄)`);
+    return `<div class="msg warn">${name}에 보이지 않는 특수 문자가 있습니다: ${esc(parts.join(', '))}. 공백으로 보지 않고 표시해 비교합니다.</div>`;
+  };
+  msg.innerHTML = invMsg('ASIS', r.invA) + invMsg('TOBE', r.invB);
+
+  $('outA').innerHTML = renderSide(r.uA, r.hunks, 'a');
+  $('outB').innerHTML = renderSide(r.uB, r.hunks, 'b');
+
+  const rows = [];
+  r.hunks.forEach((h, i) => rows.push({ id: h.id, kind: '<span class="kind-d">다름</span>', a: h.a, b: h.b }));
+  r.allows.forEach(w => rows.push({ id: w.id, kind: `<span class="kind-a">허용 · ${esc(w.label)}</span>`, a: w.a, b: w.b }));
+  $('diffList').innerHTML = rows.length
+    ? `<table><thead><tr><th>No</th><th>구분</th><th style="width:42%">ASIS</th><th style="width:42%">TOBE</th></tr></thead><tbody>${
+        rows.map((x, i) => `<tr class="click" data-ref="${x.id}"><td>${i + 1}</td><td>${x.kind}</td><td class="code">${x.a.length ? esc(inlineText(x.a)) : '<span class="muted">(없음)</span>'}</td><td class="code">${x.b.length ? esc(inlineText(x.b)) : '<span class="muted">(없음)</span>'}</td></tr>`).join('')
+      }</tbody></table>`
+    : '<span class="muted">차이 없음</span>';
+  renderRules(r);
+}
+
+if (typeof document !== 'undefined') {
+  const $ = id => document.getElementById(id);
+  $('ver').textContent = VERSION;
+  const chk = $('ignoreValues');
+  let prevInsertPair = false, autoOn = false, timer = null;
+  const syncToggle = () => {
+    $('toggleWrap').classList.toggle('on', chk.checked);
+    $('toggleState').textContent = chk.checked ? (autoOn ? '켜짐 · INSERT 자동' : '켜짐') : '꺼짐';
+  };
+  const typeOf = text => { try { return firstWord(tokenize(text).toks); } catch (e) { return ''; } };
+  const run = () => {
+    const a = $('asis').value, b = $('tobe').value;
+    render(!a.trim() && !b.trim() ? null : compare(a, b, chk.checked));
+  };
+  const onInput = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const pair = typeOf($('asis').value) === 'INSERT' && typeOf($('tobe').value) === 'INSERT';
+      if (pair !== prevInsertPair) { chk.checked = pair; autoOn = pair; prevInsertPair = pair; syncToggle(); }
+      run();
+    }, 150);
+  };
+  $('asis').addEventListener('input', onInput);
+  $('tobe').addEventListener('input', onInput);
+  chk.addEventListener('change', () => { autoOn = false; syncToggle(); run(); });
+  $('resetBtn').addEventListener('click', () => {
+    clearTimeout(timer);
+    $('asis').value = ''; $('tobe').value = '';
+    chk.checked = false; autoOn = false; prevInsertPair = false;
+    syncToggle(); render(null); $('asis').focus();
+  });
+  $('diffList').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-ref]'); if (!tr) return;
+    for (const side of ['a', 'b']) {
+      const el = document.getElementById(`${side}-${tr.dataset.ref}`);
+      if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+    }
+  });
+  render(null);
+}
+</script>
+</body>
+</html>
