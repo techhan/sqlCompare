@@ -93,6 +93,15 @@ td.num{text-align:right;white-space:nowrap}
 tr.click{cursor:pointer}
 tr.click:hover{background:var(--accent-bg)}
 .kind-d{color:var(--diff-fg);background:var(--diff-bg);padding:2px 8px;border-radius:999px;white-space:nowrap;font-weight:700;font-size:13px}
+.kind{white-space:nowrap}
+.cnt{color:var(--muted);font-weight:600;font-size:13px}
+td.kind[rowspan]{background:var(--panel);border-right:1px solid var(--line)}
+tr.gstart td{border-top:2px solid var(--line)}
+.rule-link{margin-left:2px;border:1px solid var(--allow-fg);background:transparent;color:var(--allow-fg);padding:1px 8px;border-radius:999px;
+  font:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+.rule-link:hover{background:var(--allow-bg);text-decoration:underline}
+.flash-row td{animation:flr 1.6s ease-out}
+@keyframes flr{0%{background:#fde68a}100%{background:transparent}}
 .kind-a{color:var(--allow-fg);background:var(--allow-bg);padding:2px 8px;border-radius:999px;white-space:nowrap;font-weight:700;font-size:13px}
 ul.no{margin:6px 0 0;padding-left:20px;color:var(--muted)}
 code{font-family:var(--mono)}
@@ -104,7 +113,7 @@ code{font-family:var(--mono)}
   <div id="verdict" class="verdict v-idle">입력 대기</div>
   <span id="types" class="types"></span>
   <div class="actions">
-    <label class="toggle" id="toggleWrap" title="양쪽 모두 INSERT면 자동으로 켜집니다">
+    <label class="toggle" id="toggleWrap" title="양쪽 모두 INSERT·UPDATE·DELETE면 자동으로 켜집니다">
       <input type="checkbox" id="ignoreValues"><span class="track"><span class="knob"></span></span>
       <span>값 무시</span><span class="ts" id="toggleState">꺼짐</span>
     </label>
@@ -134,13 +143,13 @@ code{font-family:var(--mono)}
     <span><span class="sw gap">▸</span>반대편에만 내용이 있는 위치</span>
   </div>
 
-  <section class="card block"><h2>차이 목록</h2><div id="diffList" class="muted">-</div></section>
+  <section class="card block"><h2>검토 항목</h2><div id="diffList" class="muted">-</div></section>
   <details class="card block" open><summary>적용 규칙</summary><div id="rules"></div></details>
 </div>
 
 <script>
 'use strict';
-const VERSION = 'v0.5';
+const VERSION = 'v0.7';
 
 /* ===== 공통 차이 허용 규칙 =====
    공통 차이가 늘어나면 이 목록에 추가한다.
@@ -358,10 +367,10 @@ function buildUnits(toks, groups, valueIgnore) {
   const units = []; let i = 0;
   while (i < toks.length) {
     const g = groups.get(i);
-    if (g) { units.push({ kind: g.kind, key: g.key, label: g.label, toks: toks.slice(i, g.to) }); i = g.to; continue; }
+    if (g) { units.push({ kind: g.kind, key: g.key, label: g.label, ruleId: g.ruleId, toks: toks.slice(i, g.to) }); i = g.to; continue; }
     const t = toks[i];
     if (valueIgnore && (t.type === 'string' || t.type === 'number')) {
-      units.push({ kind: 'value', key: '<값>', label: '값 무시', toks: [t] }); i++; continue;
+      units.push({ kind: 'value', key: '<값>', label: 'V1 값 무시', ruleId: 'V1', toks: [t] }); i++; continue;
     }
     if (valueIgnore && t.norm === '{') {   // {ts '...'} 같은 이스케이프 값
       let lv = 0, j = -1;
@@ -369,7 +378,7 @@ function buildUnits(toks, groups, valueIgnore) {
         if (toks[k].norm === '{') lv++;
         else if (toks[k].norm === '}' && --lv === 0) { j = k; break; }
       }
-      if (j > 0) { units.push({ kind: 'value', key: '<값>', label: '값 무시', toks: toks.slice(i, j + 1) }); i = j + 1; continue; }
+      if (j > 0) { units.push({ kind: 'value', key: '<값>', label: 'V1 값 무시', ruleId: 'V1', toks: toks.slice(i, j + 1) }); i = j + 1; continue; }
     }
     units.push({ kind: 'tok', key: t.norm, toks: [t] }); i++;
   }
@@ -400,6 +409,216 @@ function lcsDiff(A, B) {
 
 /* ===== 비교 ===== */
 function normKey(toks) { return toks.map(t => t.norm).join('\u0001'); }
+const DML = new Set(['INSERT', 'UPDATE', 'DELETE']);
+const tokU = t => ({ kind: 'tok', key: t.norm, toks: [t] });
+
+// 검토 항목 모음
+function makeCtx() {
+  const hunks = [], allows = [], ruleHits = {};
+  return {
+    hunks, allows, ruleHits,
+    hit(id) { ruleHits[id] = (ruleHits[id] || 0) + 1; },
+    allow(ruleId, label, a, b) {
+      const id = 'w' + allows.length;
+      a.concat(b).forEach(u => { u.mark = 'allow'; u.id = id; u.label = label; });
+      allows.push({ id, ruleId, label, a, b });
+      if (ruleId === 'V1') this.hit('V1');
+    },
+    hunk(a, b, aPos, bPos) {
+      const h = { a: [], b: [], aPos, bPos }; hunks.push(h);
+      a.forEach(u => this.addTo(h, 'a', u)); b.forEach(u => this.addTo(h, 'b', u));
+      return h;
+    },
+    addTo(h, side, u) { u.mark = 'diff'; h[side].push(u); },
+  };
+}
+
+// LCS 결과를 검토 항목으로 (offA/offB: 전체 단위 배열에서 구간 시작 위치)
+function collectOps(ops, uA, uB, offA, offB, ctx) {
+  let cur = null;
+  for (const op of ops) {
+    const ia = op.a + offA, ib = op.b + offB;
+    if (op.t === 'eq') {
+      cur = null;
+      const ua = uA[ia], ub = uB[ib];
+      if (ua.kind !== 'tok' && normKey(ua.toks) !== normKey(ub.toks)) ctx.allow(ua.ruleId, ua.label, [ua], [ub]);
+      continue;
+    }
+    if (!cur) cur = ctx.hunk([], [], ia, ib);
+    if (op.t === 'del') ctx.addTo(cur, 'a', uA[ia]); else ctx.addTo(cur, 'b', uB[ib]);
+  }
+}
+
+/* --- 일반 비교 (SELECT, INSERT, DELETE, 구조를 못 읽은 UPDATE) --- */
+function compareGeneric(A, B, typeA, typeB, valueIgnore, ctx) {
+  const slotsA = findSlots(A.toks, typeA), slotsB = findSlots(B.toks, typeB);
+  const gA = new Map(), gB = new Map();
+  if (typeA === typeB && (typeA === 'UPDATE' || typeA === 'INSERT')) {
+    for (const r of ALLOWED_RULES) {
+      const sa = slotsA.map.get(r.column), sb = slotsB.map.get(r.column);
+      if (!sa || !sb || sa.to <= sa.from || sb.to <= sb.from) continue;
+      if (!r.match(A.toks.slice(sa.from, sa.to), B.toks.slice(sb.from, sb.to))) continue;
+      const g = { kind: 'allow', key: '<허용:' + r.column + '>', label: `${r.id} ${r.column}`, ruleId: r.id };
+      gA.set(sa.from, { ...g, to: sa.to }); gB.set(sb.from, { ...g, to: sb.to });
+      ctx.hit(r.id);
+    }
+  }
+  if (valueIgnore) {
+    const vg = to => ({ to, kind: 'value', key: '<값>', label: 'V1 값 무시', ruleId: 'V1' });
+    if (typeA === 'INSERT') for (const r of slotsA.valueRanges) if (r.to > r.from && !gA.has(r.from)) gA.set(r.from, vg(r.to));
+    if (typeB === 'INSERT') for (const r of slotsB.valueRanges) if (r.to > r.from && !gB.has(r.from)) gB.set(r.from, vg(r.to));
+  }
+  const uA = buildUnits(A.toks, gA, valueIgnore), uB = buildUnits(B.toks, gB, valueIgnore);
+  collectOps(lcsDiff(uA.map(u => u.key), uB.map(u => u.key)), uA, uB, 0, 0, ctx);
+
+  // TOBE 메인 SELECT 목록에만 있는 추가 항목 → 허용
+  const sel = B.toks.findIndex(t => t.depth === 0 && t.type === 'word' && t.norm === 'SELECT');
+  const frm = sel < 0 ? -1 : B.toks.findIndex((t, i) => i > sel && t.depth === 0 && t.type === 'word' && t.norm === 'FROM');
+  const same = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
+  const hunks = ctx.hunks;
+  for (let h = hunks.length - 1; h >= 0 && frm > 0; h--) {
+    const hk = hunks[h];
+    if (hk.a.length) continue;
+    const ts = hk.b.flatMap(u => u.toks), norms = ts.map(t => t.norm);
+    const idx = B.toks.indexOf(ts[0]);
+    if (idx <= sel || idx + ts.length > frm || ts.some(t => t.depth !== 0)) continue;
+    const r = EXTRA_TOBE_RULES.find(r => same(norms, [',', ...r.tokens]) || same(norms, [...r.tokens, ',']));
+    if (!r) continue;
+    hunks.splice(h, 1);
+    ctx.allow(r.id, `${r.id} ${r.name}`, [], hk.b);
+    ctx.hit(r.id);
+  }
+  return { uA, uB };
+}
+
+/* --- UPDATE 전용 비교: SET은 컬럼 단위, WHERE는 조건 단위 --- */
+function classifyCond(toks, from, to) {
+  let eq = -1;
+  for (let i = from; i < to; i++) if (toks[i].depth === 0 && toks[i].norm === '=') { eq = i; break; }
+  if (eq > from && eq + 1 < to) {
+    const col = columnName(toks, from, eq);
+    if (col) return { kind: 'eq', col, from, to, vFrom: eq + 1 };
+  }
+  if (to - from >= 3 && toks[to - 2].norm === 'IS' && toks[to - 1].norm === 'NULL') {
+    const col = columnName(toks, from, to - 2);
+    if (col) return { kind: 'isnull', col, from, to };
+  }
+  return { kind: 'other', key: normKey(toks.slice(from, to)), from, to };
+}
+function parseConds(toks, from, to) {      // 최상위 AND로만 이어진 조건. OR가 있으면 null
+  const conds = []; let s = from, between = false;
+  for (let i = from; i < to; i++) {
+    const t = toks[i];
+    if (t.depth !== 0 || t.type !== 'word') continue;
+    if (t.norm === 'OR') return null;
+    if (t.norm === 'BETWEEN') { between = true; continue; }
+    if (t.norm !== 'AND') continue;
+    if (between) { between = false; continue; }
+    if (i <= s) return null;
+    conds.push(classifyCond(toks, s, i)); s = i + 1;
+  }
+  if (to <= s) return null;
+  conds.push(classifyCond(toks, s, to));
+  return conds;
+}
+function parseUpdate(toks) {
+  const s = toks.findIndex(t => t.depth === 0 && t.type === 'word' && t.norm === 'SET');
+  if (s < 0) return null;
+  if (toks.some(t => t.depth === 0 && t.type === 'word' && t.norm === 'RETURNING')) return null;
+  let w = toks.length;
+  for (let i = s + 1; i < toks.length; i++) if (toks[i].depth === 0 && toks[i].type === 'word' && toks[i].norm === 'WHERE') { w = i; break; }
+  const assigns = [], cols = new Set();
+  for (const r of splitTop(toks, s + 1, w, 0)) {
+    let eq = -1;
+    for (let i = r.from; i < r.to; i++) if (toks[i].depth === 0 && toks[i].norm === '=') { eq = i; break; }
+    if (eq < 0 || eq + 1 >= r.to) return null;
+    const col = columnName(toks, r.from, eq);
+    if (!col || cols.has(col)) return null;
+    cols.add(col); assigns.push({ col, from: r.from, to: r.to, vFrom: eq + 1 });
+  }
+  if (!assigns.length) return null;
+  const hasWhere = w < toks.length;
+  return { s, w, assigns, hasWhere, conds: hasWhere ? parseConds(toks, w + 1, toks.length) : [] };
+}
+function compareUpdate(A, B, valueIgnore, ctx) {
+  const pa = parseUpdate(A.toks), pb = parseUpdate(B.toks);
+  if (!pa || !pb) return null;
+  const uA = [], uB = [];
+
+  // UPDATE 테이블 SET
+  uA.push(...A.toks.slice(0, pa.s + 1).map(tokU)); uB.push(...B.toks.slice(0, pb.s + 1).map(tokU));
+  collectOps(lcsDiff(uA.map(u => u.key), uB.map(u => u.key)), uA, uB, 0, 0, ctx);
+
+  const valueCheck = (col, ua, ub, inSet) => {
+    if (inSet) for (const r of ALLOWED_RULES) {
+      if (r.column !== col || !r.match(ua.val, ub.val)) continue;
+      ctx.hit(r.id);
+      if (normKey(ua.val) !== normKey(ub.val)) ctx.allow(r.id, `${r.id} ${r.column}`, [ua], [ub]);
+      return;
+    }
+    if (normKey(ua.val) === normKey(ub.val)) return;
+    if (valueIgnore) ctx.allow('V1', 'V1 값 무시', [ua], [ub]);
+    else ctx.hunk([ua], [ub], 0, 0);
+  };
+
+  // SET: 컬럼 단위 (순서 무관)
+  const setUnits = (P, toks, out) => P.assigns.map((as, k) => {
+    if (k > 0) out.push(tokU(toks[as.from - 1]));
+    const u = { kind: 'set', key: '', toks: toks.slice(as.from, as.to), col: as.col,
+                lhs: toks.slice(as.from, as.vFrom - 1), val: toks.slice(as.vFrom, as.to) };
+    out.push(u); return u;
+  });
+  const sA = setUnits(pa, A.toks, uA), sB = setUnits(pb, B.toks, uB);
+  const setEndB = uB.length;
+  const mapB = new Map(sB.map(u => [u.col, u])), usedB = new Set();
+  for (const ua of sA) {
+    const ub = mapB.get(ua.col);
+    if (!ub) { ctx.hunk([ua], [], 0, setEndB); continue; }   // TOBE가 저장하지 않는 컬럼
+    usedB.add(ub);
+    if (normKey(ua.lhs) !== normKey(ub.lhs)) { ctx.hunk([ua], [ub], 0, 0); continue; }
+    valueCheck(ua.col, ua, ub, true);
+  }
+  for (const ub of sB) if (!usedB.has(ub)) { ctx.allow('U1', 'U1 TOBE SET 추가 컬럼', [], [ub]); ctx.hit('U1'); }
+
+  // WHERE
+  if (pa.hasWhere && pb.hasWhere && pa.conds && pb.conds) {
+    const condUnits = (P, toks, out) => {
+      out.push(tokU(toks[P.w]));
+      return P.conds.map((c, k) => {
+        if (k > 0) for (let i = P.conds[k - 1].to; i < c.from; i++) out.push(tokU(toks[i]));
+        const u = { kind: 'cond', key: '', toks: toks.slice(c.from, c.to), c };
+        if (c.kind === 'eq') { u.lhs = toks.slice(c.from, c.vFrom - 1); u.val = toks.slice(c.vFrom, c.to); }
+        out.push(u); return u;
+      });
+    };
+    const cA = condUnits(pa, A.toks, uA), cB = condUnits(pb, B.toks, uB);
+    const setCols = new Set(sB.map(u => u.col)), usedA = new Set();
+    for (const ub of cB) {
+      const c = ub.c;
+      const ua = cA.find(x => !usedA.has(x) && x.c.kind === c.kind && (c.kind === 'other' ? x.c.key === c.key : x.c.col === c.col));
+      if (!ua) { ctx.hunk([], [ub], uA.length, 0); continue; }   // TOBE에만 있는 조건
+      usedA.add(ua);
+      if (c.kind !== 'eq') continue;
+      if (normKey(ua.lhs) !== normKey(ub.lhs)) { ctx.hunk([ua], [ub], 0, 0); continue; }
+      valueCheck(c.col, ua, ub, false);
+    }
+    for (const ua of cA) {
+      if (usedA.has(ua)) continue;
+      if (ua.c.kind !== 'other' && setCols.has(ua.c.col)) { ctx.allow('U2', 'U2 updatewhere 조건', [ua], []); ctx.hit('U2'); }
+      else ctx.hunk([ua], [], 0, uB.length);
+    }
+  } else if (pa.hasWhere && pb.hasWhere) {               // OR 등으로 조건을 못 나누면 토큰 비교
+    const oA = uA.length, oB = uB.length;
+    const rA = buildUnits(A.toks.slice(pa.w), new Map(), valueIgnore), rB = buildUnits(B.toks.slice(pb.w), new Map(), valueIgnore);
+    uA.push(...rA); uB.push(...rB);
+    collectOps(lcsDiff(rA.map(u => u.key), rB.map(u => u.key)), uA, uB, oA, oB, ctx);
+  } else if (pa.hasWhere) {
+    const us = A.toks.slice(pa.w).map(tokU); uA.push(...us); ctx.hunk(us, [], 0, uB.length);
+  } else if (pb.hasWhere) {
+    const us = B.toks.slice(pb.w).map(tokU); uB.push(...us); ctx.hunk([], us, uA.length, 0);
+  }
+  return { uA, uB };
+}
 
 function compare(aText, bText, valueIgnore) {
   const sides = [aText, bText].map((text, idx) => {
@@ -413,68 +632,17 @@ function compare(aText, bText, valueIgnore) {
   const [A, B] = sides;
   const typeA = firstWord(A.toks), typeB = firstWord(B.toks);
 
-  const slotsA = findSlots(A.toks, typeA), slotsB = findSlots(B.toks, typeB);
-  const gA = new Map(), gB = new Map(), ruleHits = {};
-  if (typeA === typeB && (typeA === 'UPDATE' || typeA === 'INSERT')) {
-    for (const r of ALLOWED_RULES) {
-      const sa = slotsA.map.get(r.column), sb = slotsB.map.get(r.column);
-      if (!sa || !sb || sa.to <= sa.from || sb.to <= sb.from) continue;
-      if (!r.match(A.toks.slice(sa.from, sa.to), B.toks.slice(sb.from, sb.to))) continue;
-      const g = { kind: 'allow', key: '<허용:' + r.column + '>', label: `${r.id} ${r.column}` };
-      gA.set(sa.from, { ...g, to: sa.to }); gB.set(sb.from, { ...g, to: sb.to });
-      ruleHits[r.id] = (ruleHits[r.id] || 0) + 1;
-    }
-  }
-  if (valueIgnore) {
-    if (typeA === 'INSERT') for (const r of slotsA.valueRanges) if (r.to > r.from && !gA.has(r.from)) gA.set(r.from, { to: r.to, kind: 'value', key: '<값>', label: '값 무시' });
-    if (typeB === 'INSERT') for (const r of slotsB.valueRanges) if (r.to > r.from && !gB.has(r.from)) gB.set(r.from, { to: r.to, kind: 'value', key: '<값>', label: '값 무시' });
-  }
-  const uA = buildUnits(A.toks, gA, valueIgnore), uB = buildUnits(B.toks, gB, valueIgnore);
+  const ctx = makeCtx();
+  let res = null;
+  try {
+    if (typeA === 'UPDATE' && typeB === 'UPDATE') res = compareUpdate(A, B, valueIgnore, ctx);
+    if (!res) res = compareGeneric(A, B, typeA, typeB, valueIgnore, ctx);
+  } catch (e) { if (e instanceof SqlError) return { verdict: 'error', errors: [e.message] }; throw e; }
 
-  let ops;
-  try { ops = lcsDiff(uA.map(u => u.key), uB.map(u => u.key)); }
-  catch (e) { if (e instanceof SqlError) return { verdict: 'error', errors: [e.message] }; throw e; }
-
-  const hunks = [], allows = []; let cur = null;
-  for (const op of ops) {
-    if (op.t === 'eq') {
-      cur = null;
-      const ua = uA[op.a], ub = uB[op.b];
-      if (ua.kind !== 'tok' && normKey(ua.toks) !== normKey(ub.toks)) {
-        const id = 'w' + allows.length;
-        ua.mark = ub.mark = 'allow'; ua.id = ub.id = id;
-        allows.push({ id, label: ua.label, a: [ua], b: [ub] });
-      }
-      continue;
-    }
-    if (!cur) { cur = { id: 'h' + hunks.length, a: [], b: [], aPos: op.a, bPos: op.b }; hunks.push(cur); }
-    if (op.t === 'del') { const u = uA[op.a]; u.mark = 'diff'; u.hid = cur.id; cur.a.push(u); }
-    else { const u = uB[op.b]; u.mark = 'diff'; u.hid = cur.id; cur.b.push(u); }
-  }
-
-  // TOBE 메인 SELECT 목록에만 있는 추가 항목 → 허용
-  const sel = B.toks.findIndex(t => t.depth === 0 && t.type === 'word' && t.norm === 'SELECT');
-  const frm = sel < 0 ? -1 : B.toks.findIndex((t, i) => i > sel && t.depth === 0 && t.type === 'word' && t.norm === 'FROM');
-  const same = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
-  for (let h = hunks.length - 1; h >= 0 && frm > 0; h--) {
-    const hk = hunks[h];
-    if (hk.a.length) continue;
-    const ts = hk.b.flatMap(u => u.toks), norms = ts.map(t => t.norm);
-    const idx = B.toks.indexOf(ts[0]);
-    if (idx <= sel || idx + ts.length > frm || ts.some(t => t.depth !== 0)) continue;
-    const r = EXTRA_TOBE_RULES.find(r => same(norms, [',', ...r.tokens]) || same(norms, [...r.tokens, ',']));
-    if (!r) continue;
-    const id = 'x' + h;
-    hk.b.forEach(u => { u.mark = 'allow'; u.id = id; u.label = `${r.id} ${r.name}`; delete u.hid; });
-    allows.push({ id, label: `${r.id} ${r.name}`, a: [], b: hk.b });
-    hunks.splice(h, 1);
-    ruleHits[r.id] = (ruleHits[r.id] || 0) + 1;
-  }
+  const { hunks, allows, ruleHits } = ctx;
   hunks.forEach((hk, i) => { hk.id = 'h' + i; hk.a.concat(hk.b).forEach(u => { u.hid = hk.id; }); });
-
   const verdict = hunks.length ? 'diff' : allows.length ? 'allow' : 'same';
-  const valueGroups = [uA, uB].map(us => us.filter(u => u.kind === 'value').length);
-  return { verdict, typeA, typeB, uA, uB, hunks, allows, stA: A.st, stB: B.st, invA: A.inv, invB: B.inv, ruleHits, valueGroups };
+  return { verdict, typeA, typeB, uA: res.uA, uB: res.uB, hunks, allows, stA: A.st, stB: B.st, invA: A.inv, invB: B.inv, ruleHits };
 }
 
 /* ===== 화면 ===== */
@@ -548,20 +716,22 @@ function ruleRows(r) {
     const hit = r && r.ruleHits ? String(r.ruleHits[er.id] || 0) : dash;
     rows.push([er.id, esc(er.desc) + '. 서브쿼리·WHERE에는 적용하지 않음', dash, hit]);
   }
-  const vg = r && r.valueGroups ? r.valueGroups : null;
-  rows.push(['V1', '값 무시(체크 시): INSERT는 VALUES의 값 자리 전체, 그 외는 문자열·숫자·<code>{ }</code> 값을 "값"으로만 비교', vg ? String(vg[0]) : dash, vg ? String(vg[1]) : dash]);
+  const h = id => r && r.ruleHits ? String(r.ruleHits[id] || 0) : dash;
+  rows.push(['U1', 'UPDATE SET은 순서 없이 컬럼 단위로 비교. TOBE SET에만 있는 컬럼은 허용 (TOBE는 수정 가능한 컬럼을 모두 저장). ASIS에만 있는 컬럼은 다름', dash, h('U1')]);
+  rows.push(['U2', 'UPDATE WHERE는 조건 단위로 비교. ASIS에만 있는 <code>COL = 값</code>·<code>COL IS NULL</code> 조건 중 COL이 TOBE SET 컬럼이면 PB updatewhere 조건으로 보고 허용. 스크립트에 직접 쓴 UPDATE의 업무 조건일 수 있으니 확인 필요', h('U2'), dash]);
+  rows.push(['V1', '값 무시: INSERT·UPDATE·DELETE면 자동으로 켜짐. INSERT VALUES·UPDATE SET/WHERE는 값 자리 전체, 그 외는 문자열·숫자·<code>{ }</code> 값을 "값"으로만 비교', h('V1'), h('V1')]);
   return rows;
 }
 function renderRules(r) {
-  const rows = ruleRows(r).map(x => `<tr><td>${x[0]}</td><td>${x[1]}</td><td class="num">${x[2]}</td><td class="num">${x[3]}</td></tr>`).join('');
+  const rows = ruleRows(r).map(x => `<tr id="rule-${x[0]}"><td>${x[0]}</td><td>${x[1]}</td><td class="num">${x[2]}</td><td class="num">${x[3]}</td></tr>`).join('');
   document.getElementById('rules').innerHTML =
     `<table><thead><tr><th>ID</th><th>규칙</th><th>ASIS 적용</th><th>TOBE 적용</th></tr></thead><tbody>${rows}</tbody></table>
      <div class="muted" style="margin-top:8px">하지 않는 것</div>
      <ul class="no">
        <li>값 형식 통일 (<code>'10'</code>과 <code>10</code>, <code>1.0</code>과 <code>1</code>은 다름)</li>
-       <li>컬럼·조건 순서 재배열</li>
+       <li>컬럼·조건 순서 재배열 (UPDATE의 SET·WHERE만 예외: U1·U2)</li>
        <li>의미가 같은 다른 표현 통일 (<code>!=</code>와 <code>&lt;&gt;</code>, alias, JOIN 문법, NVL·COALESCE)</li>
-       <li>WHERE 절에 허용 규칙 적용</li>
+       <li>WHERE 절에 A1·A2 적용</li>
      </ul>`;
 }
 
@@ -594,14 +764,24 @@ function render(r) {
   $('outA').innerHTML = renderSide(r.uA, r.hunks, 'a');
   $('outB').innerHTML = renderSide(r.uB, r.hunks, 'b');
 
-  const rows = [];
-  r.hunks.forEach((h, i) => rows.push({ id: h.id, kind: '<span class="kind-d">다름</span>', a: h.a, b: h.b }));
-  r.allows.forEach(w => rows.push({ id: w.id, kind: `<span class="kind-a">허용 · ${esc(w.label)}</span>`, a: w.a, b: w.b }));
-  $('diffList').innerHTML = rows.length
-    ? `<table><thead><tr><th>No</th><th>구분</th><th style="width:42%">ASIS</th><th style="width:42%">TOBE</th></tr></thead><tbody>${
-        rows.map((x, i) => `<tr class="click" data-ref="${x.id}"><td>${i + 1}</td><td>${x.kind}</td><td class="code">${x.a.length ? esc(inlineText(x.a)) : '<span class="muted">(없음)</span>'}</td><td class="code">${x.b.length ? esc(inlineText(x.b)) : '<span class="muted">(없음)</span>'}</td></tr>`).join('')
-      }</tbody></table>`
-    : '<span class="muted">차이 없음</span>';
+  const code = us => us.length ? esc(inlineText(us)) : '<span class="muted">(없음)</span>';
+  let no = 0, html = '';
+  r.hunks.forEach(h => {
+    html += `<tr class="click" data-ref="${h.id}"><td>${++no}</td><td class="kind"><span class="kind-d">다름</span></td><td class="code">${code(h.a)}</td><td class="code">${code(h.b)}</td></tr>`;
+  });
+  const groups = new Map();
+  r.allows.forEach(w => { if (!groups.has(w.ruleId)) groups.set(w.ruleId, { label: w.label, items: [] }); groups.get(w.ruleId).items.push(w); });
+  for (const [rid, g] of groups) {
+    g.items.forEach((w, k) => {
+      const head = k === 0
+        ? `<td class="kind" rowspan="${g.items.length}"><button type="button" class="rule-link" data-rule="${esc(rid)}" title="적용 규칙으로 이동">${esc(g.label)}</button><span class="cnt"> · ${g.items.length}건</span></td>`
+        : '';
+      html += `<tr class="click${k === 0 ? ' gstart' : ''}" data-ref="${w.id}"><td>${++no}</td>${head}<td class="code">${code(w.a)}</td><td class="code">${code(w.b)}</td></tr>`;
+    });
+  }
+  $('diffList').innerHTML = html
+    ? `<table><thead><tr><th>No</th><th>구분</th><th style="width:38%">ASIS</th><th style="width:38%">TOBE</th></tr></thead><tbody>${html}</tbody></table>`
+    : '<span class="muted">검토할 항목 없음</span>';
   renderRules(r);
 }
 
@@ -609,10 +789,10 @@ if (typeof document !== 'undefined') {
   const $ = id => document.getElementById(id);
   $('ver').textContent = VERSION;
   const chk = $('ignoreValues');
-  let prevInsertPair = false, autoOn = false, timer = null;
+  let prevDml = '', autoType = '', timer = null;
   const syncToggle = () => {
     $('toggleWrap').classList.toggle('on', chk.checked);
-    $('toggleState').textContent = chk.checked ? (autoOn ? '켜짐 · INSERT 자동' : '켜짐') : '꺼짐';
+    $('toggleState').textContent = chk.checked ? (autoType ? `켜짐 · ${autoType} 자동` : '켜짐') : '꺼짐';
   };
   const typeOf = text => { try { return firstWord(tokenize(text).toks); } catch (e) { return ''; } };
   const run = () => {
@@ -622,21 +802,32 @@ if (typeof document !== 'undefined') {
   const onInput = () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const pair = typeOf($('asis').value) === 'INSERT' && typeOf($('tobe').value) === 'INSERT';
-      if (pair !== prevInsertPair) { chk.checked = pair; autoOn = pair; prevInsertPair = pair; syncToggle(); }
+      const ta = typeOf($('asis').value), tb = typeOf($('tobe').value);
+      const dml = ta === tb && DML.has(ta) ? ta : '';
+      if (dml !== prevDml) { chk.checked = !!dml; autoType = dml; prevDml = dml; syncToggle(); }
       run();
     }, 150);
   };
   $('asis').addEventListener('input', onInput);
   $('tobe').addEventListener('input', onInput);
-  chk.addEventListener('change', () => { autoOn = false; syncToggle(); run(); });
+  chk.addEventListener('change', () => { autoType = ''; syncToggle(); run(); });
   $('resetBtn').addEventListener('click', () => {
     clearTimeout(timer);
     $('asis').value = ''; $('tobe').value = '';
-    chk.checked = false; autoOn = false; prevInsertPair = false;
+    chk.checked = false; autoType = ''; prevDml = '';
     syncToggle(); render(null); $('asis').focus();
   });
   $('diffList').addEventListener('click', e => {
+    const link = e.target.closest('.rule-link');
+    if (link) {
+      const row = document.getElementById(`rule-${link.dataset.rule}`);
+      if (row) {
+        row.closest('details').open = true;
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        row.classList.remove('flash-row'); void row.offsetWidth; row.classList.add('flash-row');
+      }
+      return;
+    }
     const tr = e.target.closest('tr[data-ref]'); if (!tr) return;
     for (const side of ['a', 'b']) {
       const el = document.getElementById(`${side}-${tr.dataset.ref}`);
