@@ -6,85 +6,94 @@
 <title>SQL 로그 비교기</title>
 <style>
 :root{
-  --bg:#f5f6f8; --panel:#ffffff; --text:#1d2330; --muted:#667085; --line:#d9dde3;
-  --diff-bg:#ffd5d2; --diff-fg:#7d1810; --allow-bg:#d4e4ff; --allow-fg:#10397f;
-  --ok:#11703a; --okbg:#d9f2e2; --warn:#7a5000; --warnbg:#fff0c7; --err:#9c1419; --errbg:#fcdcdc;
-  --hint:#6f45ad; --mono: Consolas, "D2Coding", "Courier New", monospace;
+  --bg:#eef2fb; --panel:#ffffff; --text:#1b2236; --muted:#5d6782; --line:#dde3f0;
+  --brand1:#4f46e5; --brand2:#0ea5e9;
+  --asis:#f97316; --asis-bg:#fff4ec; --tobe:#2563eb; --tobe-bg:#eef4ff;
+  --accent:#4f46e5; --accent-bg:#ecebff; --code-bg:#f8faff;
+  --diff-bg:#ffd9d6; --diff-fg:#b4231a; --allow-bg:#d8e6ff; --allow-fg:#1d4ed8;
+  --ok:#16a34a; --warn:#8a5a00; --warnbg:#fff3cd; --err:#dc2626; --errbg:#fee2e2;
+  --hint:#7c3aed; --mono: Consolas, "D2Coding", "Courier New", monospace;
+  --shadow:0 1px 2px rgba(30,41,80,.06), 0 4px 16px rgba(30,41,80,.06);
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --bg:#14171c; --panel:#1c2027; --text:#e4e7ec; --muted:#98a2b3; --line:#323844;
-    --diff-bg:#5e201c; --diff-fg:#ffd5d2; --allow-bg:#1c355f; --allow-fg:#d4e4ff;
-    --ok:#6fd49a; --okbg:#163723; --warn:#f3c55b; --warnbg:#3b3014; --err:#ff9d9d; --errbg:#4a1a1a; --hint:#c3a6f0;
+    --bg:#0f1320; --panel:#171c2b; --text:#e6e9f2; --muted:#9aa3bd; --line:#2a3148;
+    --brand1:#5b54f0; --brand2:#0b8fd0;
+    --asis:#fb923c; --asis-bg:#2a1d14; --tobe:#60a5fa; --tobe-bg:#15213a;
+    --accent:#8b85ff; --accent-bg:#25234a; --code-bg:#121726;
+    --diff-bg:#5a1f1c; --diff-fg:#ffc9c4; --allow-bg:#1b3361; --allow-fg:#c9dbff;
+    --ok:#22c55e; --warn:#f3c55b; --warnbg:#3b3014; --err:#f87171; --errbg:#451a1a; --hint:#c4a5ff;
+    --shadow:none;
   }
 }
-:root{--accent:#2563d9;--accent-bg:#e3ecfd;--code-bg:#fafbfc}
-@media (prefers-color-scheme: dark){:root{--accent:#7aa7ff;--accent-bg:#1b2c4d;--code-bg:#171a20}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif}
-.top{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);
-  display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 24px}
+.top{position:sticky;top:0;z-index:10;background:var(--panel);color:var(--text);border-bottom:2px solid var(--brand1);
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 24px;box-shadow:var(--shadow)}
 .brand{display:flex;align-items:baseline;gap:8px;margin-right:8px}
-h1{font-size:18px;margin:0}
+h1{font-size:18px;margin:0;letter-spacing:-.2px}
 .ver{color:var(--muted);font-size:12px}
 .actions{margin-left:auto;display:flex;align-items:center;gap:10px}
 .wrap{padding:20px 24px 40px}
 .sub{color:var(--muted);margin:0 0 16px;font-size:13px}
-h2{font-size:15px;margin:0 0 10px}
+h2{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 @media (max-width:900px){.grid{grid-template-columns:1fr}.top{padding:10px 16px}.wrap{padding:16px}.actions{margin-left:0}}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
-label.side{font-weight:700;display:block;margin-bottom:8px;font-size:15px}
-textarea{width:100%;height:34vh;min-height:220px;resize:vertical;font:14px/1.5 var(--mono);background:var(--code-bg);color:var(--text);
-  border:1px solid var(--line);border-radius:8px;padding:12px;tab-size:4}
-textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow)}
+.chip{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.5px;color:#fff}
+.chip.asis{background:var(--asis)} .chip.tobe{background:var(--tobe)}
+label.side{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:700}
+textarea{width:100%;height:150px;min-height:90px;resize:vertical;font:14px/1.5 var(--mono);background:var(--code-bg);color:var(--text);
+  border:1px solid var(--line);border-radius:8px;padding:10px 12px;tab-size:4}
+.card.asis textarea:focus{outline:2px solid var(--asis);outline-offset:-1px}
+.card.tobe textarea:focus{outline:2px solid var(--tobe);outline-offset:-1px}
 .muted{color:var(--muted);font-size:13px}
 .toggle{position:relative;display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:2px solid var(--line);
-  border-radius:999px;cursor:pointer;user-select:none;font-weight:700;background:var(--panel)}
+  border-radius:999px;cursor:pointer;user-select:none;font-weight:700;color:var(--text);background:var(--panel)}
 .toggle input{position:absolute;opacity:0;width:0;height:0}
 .track{width:38px;height:22px;border-radius:999px;background:var(--line);position:relative;transition:background .15s;flex:none}
 .knob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
 .toggle .ts{font-weight:600;font-size:13px;color:var(--muted)}
-.toggle.on{border-color:var(--accent);background:var(--accent-bg);color:var(--accent)}
+.toggle.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
 .toggle.on .track{background:var(--accent)}
 .toggle.on .knob{left:19px}
 .toggle.on .ts{color:var(--accent)}
 .toggle input:focus-visible + .track{outline:2px solid var(--accent);outline-offset:2px}
-.btn{padding:8px 18px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-weight:700;cursor:pointer}
+.btn{padding:8px 18px;border-radius:999px;border:2px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-weight:700;cursor:pointer}
 .btn:hover{border-color:var(--accent);color:var(--accent)}
-.verdict{padding:7px 18px;border-radius:999px;font-weight:800;font-size:16px}
-.v-idle{background:var(--line);color:var(--muted)}
-.v-same{background:var(--okbg);color:var(--ok)}
-.v-allow{background:var(--allow-bg);color:var(--allow-fg)}
-.v-diff{background:var(--diff-bg);color:var(--diff-fg)}
-.v-err{background:var(--errbg);color:var(--err)}
+.verdict{padding:7px 18px;border-radius:999px;font-weight:800;font-size:16px;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.v-idle{background:var(--line);color:var(--muted);box-shadow:none}
+.v-same{background:var(--ok)}
+.v-allow{background:#2563eb}
+.v-diff{background:var(--err)}
+.v-err{background:#9f1239}
 .types{color:var(--muted);font-size:13px}
 .msg{border-radius:8px;padding:10px 14px;margin:0 0 16px}
 .msg.warn{background:var(--warnbg);color:var(--warn)}
-.msg.err{background:var(--errbg);color:var(--err)}
-pre.out{margin:0;min-height:120px;max-height:65vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font:14px/1.6 var(--mono);
-  background:var(--code-bg);border-radius:8px;padding:12px}
-.d{background:var(--diff-bg);color:var(--diff-fg);border-radius:3px}
+.msg.err{background:var(--errbg);color:var(--err);font-weight:600}
+pre.out{margin:0;min-height:45vh;max-height:75vh;overflow:auto;white-space:pre-wrap;word-break:break-all;font:14px/1.65 var(--mono);
+  background:var(--code-bg);border-radius:8px;padding:12px 14px;border:1px solid var(--line)}
+.d{background:var(--diff-bg);color:var(--diff-fg);border-radius:3px;font-weight:700}
 .al{background:var(--allow-bg);color:var(--allow-fg);border-radius:3px;border-bottom:1px dashed currentColor}
 .hint{color:var(--hint);font-style:italic}
 .inv{outline:1px solid var(--err);color:var(--err);border-radius:2px}
 .gap{background:var(--diff-bg);color:var(--diff-fg);border-radius:3px;padding:0 2px}
 .flash{animation:fl 1.2s ease-out}
-@keyframes fl{0%{outline:3px solid #f5a623}100%{outline:3px solid transparent}}
+@keyframes fl{0%{outline:3px solid #f59e0b}100%{outline:3px solid transparent}}
 .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:12px 0 0}
 .legend span.sw{display:inline-block;padding:0 6px;border-radius:3px;margin-right:4px}
 .block{margin-top:20px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:left;vertical-align:top}
-th{color:var(--muted);font-weight:600;white-space:nowrap}
+th{color:var(--muted);font-weight:700;white-space:nowrap;background:var(--code-bg)}
 td.code{font:13.5px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all;max-width:0}
 details > summary{cursor:pointer;font-weight:700;font-size:15px;list-style-position:inside}
 details[open] > summary{margin-bottom:10px}
 td.num{text-align:right;white-space:nowrap}
 tr.click{cursor:pointer}
-tr.click:hover{background:var(--bg)}
-.kind-d{color:var(--diff-fg);background:var(--diff-bg);padding:1px 6px;border-radius:4px;white-space:nowrap}
-.kind-a{color:var(--allow-fg);background:var(--allow-bg);padding:1px 6px;border-radius:4px;white-space:nowrap}
+tr.click:hover{background:var(--accent-bg)}
+.kind-d{color:var(--diff-fg);background:var(--diff-bg);padding:2px 8px;border-radius:999px;white-space:nowrap;font-weight:700;font-size:13px}
+.kind-a{color:var(--allow-fg);background:var(--allow-bg);padding:2px 8px;border-radius:999px;white-space:nowrap;font-weight:700;font-size:13px}
 ul.no{margin:6px 0 0;padding-left:20px;color:var(--muted)}
 code{font-family:var(--mono)}
 </style>
@@ -107,17 +116,17 @@ code{font-family:var(--mono)}
   <p class="sub">ASIS·TOBE SQL 로그가 같은 쿼리인지 비교합니다. 입력한 SQL은 저장하거나 외부로 보내지 않습니다.</p>
 
   <div class="grid">
-    <div class="card"><label class="side" for="asis">ASIS</label>
+    <div class="card asis"><label class="side" for="asis"><span class="chip asis">ASIS</span>SQL</label>
       <textarea id="asis" spellcheck="false" placeholder="ASIS SQL 로그를 붙여 넣으세요"></textarea></div>
-    <div class="card"><label class="side" for="tobe">TOBE</label>
+    <div class="card tobe"><label class="side" for="tobe"><span class="chip tobe">TOBE</span>SQL</label>
       <textarea id="tobe" spellcheck="false" placeholder="TOBE SQL 로그를 붙여 넣으세요"></textarea></div>
   </div>
 
   <div id="messages" class="block"></div>
 
   <div class="grid">
-    <div class="card"><h2>ASIS 정규화 결과</h2><pre class="out" id="outA"></pre></div>
-    <div class="card"><h2>TOBE 정규화 결과</h2><pre class="out" id="outB"></pre></div>
+    <div class="card asis"><h2><span class="chip asis">ASIS</span>정규화 결과</h2><pre class="out" id="outA"></pre></div>
+    <div class="card tobe"><h2><span class="chip tobe">TOBE</span>정규화 결과</h2><pre class="out" id="outB"></pre></div>
   </div>
   <div class="legend">
     <span><span class="sw d">다름</span>한쪽에만 있거나 내용이 다른 부분</span>
@@ -131,7 +140,7 @@ code{font-family:var(--mono)}
 
 <script>
 'use strict';
-const VERSION = 'v0.2';
+const VERSION = 'v0.5';
 
 /* ===== 공통 차이 허용 규칙 =====
    공통 차이가 늘어나면 이 목록에 추가한다.
@@ -145,6 +154,16 @@ const ALLOWED_RULES = [
   { id: 'A2', column: 'UPDATE_MAN',
     desc: '양쪽 값이 모두 문자열 하나면 허용 (ASIS 사용자명 → TOBE 사용자 ID)',
     match: (a, t) => a.length === 1 && a[0].type === 'string' && t.length === 1 && t[0].type === 'string' },
+];
+
+/* ===== TOBE 전용 추가 항목 허용 규칙 =====
+   TOBE의 메인 SELECT 목록에만 있는 항목을 허용한다. 서브쿼리·WHERE에는 적용하지 않는다.
+   tokens: 정규화된 토큰 순서 (앞이나 뒤의 쉼표는 자동 처리)
+*/
+const EXTRA_TOBE_RULES = [
+  { id: 'A3', name: "'0' AS CHK",
+    desc: "TOBE 메인 SELECT 목록에만 있는 '0' AS CHK 허용 (멀티로우 삭제용 체크 컬럼)",
+    tokens: ["'0'", 'AS', 'CHK'] },
 ];
 
 /* ===== 토큰화 ===== */
@@ -170,7 +189,7 @@ function scanString(src, i) {            // src[i] === "'" , '' 는 이스케이
 
 function tokenize(src) {
   const toks = [];
-  const st = { comment: 0, hint: 0, upper: 0, string: 0, opMerge: 0, semicolon: 0, invisible: 0 };
+  const st = { comment: 0, hint: 0, upper: 0, string: 0, opMerge: 0, semicolon: 0, invisible: 0, unquote: 0 };
   const inv = [];
   const n = src.length;
   let i = 0;
@@ -218,11 +237,14 @@ function tokenize(src) {
       const j = scanString(src, i), raw = src.slice(i, j);
       push('string', raw, raw); st.string++; i = j; continue;
     }
-    // 큰따옴표 식별자: 대소문자 유지
+    // 큰따옴표 식별자: 안이 전부 대문자면 일반 이름과 같음 (Oracle), 아니면 대소문자 유지
     if (c === '"') {
       const k = src.indexOf('"', i + 1);
       if (k < 0) throw new SqlError(`닫히지 않은 큰따옴표 " (${lineOf(src, i)}번째 줄)`);
-      const raw = src.slice(i, k + 1); push('qident', raw, raw); i = k + 1; continue;
+      const raw = src.slice(i, k + 1), inner = raw.slice(1, -1);
+      if (/^[A-Z][A-Z0-9_$#]*$/.test(inner)) { push('word', inner, raw); st.unquote++; }
+      else push('qident', raw, raw);
+      i = k + 1; continue;
     }
     // 숫자: 형식 통일하지 않음
     if ((c >= '0' && c <= '9') || (c === '.' && c1 >= '0' && c1 <= '9')) {
@@ -430,6 +452,26 @@ function compare(aText, bText, valueIgnore) {
     else { const u = uB[op.b]; u.mark = 'diff'; u.hid = cur.id; cur.b.push(u); }
   }
 
+  // TOBE 메인 SELECT 목록에만 있는 추가 항목 → 허용
+  const sel = B.toks.findIndex(t => t.depth === 0 && t.type === 'word' && t.norm === 'SELECT');
+  const frm = sel < 0 ? -1 : B.toks.findIndex((t, i) => i > sel && t.depth === 0 && t.type === 'word' && t.norm === 'FROM');
+  const same = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
+  for (let h = hunks.length - 1; h >= 0 && frm > 0; h--) {
+    const hk = hunks[h];
+    if (hk.a.length) continue;
+    const ts = hk.b.flatMap(u => u.toks), norms = ts.map(t => t.norm);
+    const idx = B.toks.indexOf(ts[0]);
+    if (idx <= sel || idx + ts.length > frm || ts.some(t => t.depth !== 0)) continue;
+    const r = EXTRA_TOBE_RULES.find(r => same(norms, [',', ...r.tokens]) || same(norms, [...r.tokens, ',']));
+    if (!r) continue;
+    const id = 'x' + h;
+    hk.b.forEach(u => { u.mark = 'allow'; u.id = id; u.label = `${r.id} ${r.name}`; delete u.hid; });
+    allows.push({ id, label: `${r.id} ${r.name}`, a: [], b: hk.b });
+    hunks.splice(h, 1);
+    ruleHits[r.id] = (ruleHits[r.id] || 0) + 1;
+  }
+  hunks.forEach((hk, i) => { hk.id = 'h' + i; hk.a.concat(hk.b).forEach(u => { u.hid = hk.id; }); });
+
   const verdict = hunks.length ? 'diff' : allows.length ? 'allow' : 'same';
   const valueGroups = [uA, uB].map(us => us.filter(u => u.kind === 'value').length);
   return { verdict, typeA, typeB, uA, uB, hunks, allows, stA: A.st, stB: B.st, invA: A.inv, invB: B.inv, ruleHits, valueGroups };
@@ -491,7 +533,8 @@ function ruleRows(r) {
     ['N1', '주석 제거 (<code>--</code>, <code>/* */</code>). 따옴표 안은 주석으로 보지 않음', v(a, 'comment'), v(b, 'comment')],
     ['N2', '힌트 <code>/*+ */</code>는 지우지 않고 비교 (힌트 안 공백 정리·대문자)', v(a, 'hint'), v(b, 'hint')],
     ['N3', '공백·탭·개행(space, tab, CR, LF)은 구분자로만 사용', dash, dash],
-    ['N4', '따옴표 밖 단어는 대문자로 통일 (큰따옴표 식별자는 그대로)', v(a, 'upper'), v(b, 'upper')],
+    ['N4', '따옴표 밖 단어는 대문자로 통일', v(a, 'upper'), v(b, 'upper')],
+    ['N9', '큰따옴표 식별자: 안이 전부 대문자면 따옴표 없는 이름과 같게 봄 (<code>"COL"</code> = <code>COL</code>). 소문자가 섞이면 그대로 비교', v(a, 'unquote'), v(b, 'unquote')],
     ['N5', '문자열 리터럴은 원문 그대로 비교 (<code>\'\'</code> 이스케이프 포함)', v(a, 'string'), v(b, 'string')],
     ['N6', '연산자 사이 공백 붙임: <code>&lt; &gt;</code>→<code>&lt;&gt;</code>, <code>&gt; =</code>→<code>&gt;=</code>, <code>&lt; =</code>→<code>&lt;=</code>, <code>! =</code>→<code>!=</code>', v(a, 'opMerge'), v(b, 'opMerge')],
     ['N7', '끝의 <code>;</code> 하나는 무시', v(a, 'semicolon'), v(b, 'semicolon')],
@@ -500,6 +543,10 @@ function ruleRows(r) {
   for (const ar of ALLOWED_RULES) {
     const hit = r && r.ruleHits ? String(r.ruleHits[ar.id] || 0) : dash;
     rows.push([ar.id, `<code>${esc(ar.column)}</code>: ${esc(ar.desc)}. UPDATE SET 절, INSERT 컬럼-값 짝에서만 적용`, hit, hit]);
+  }
+  for (const er of EXTRA_TOBE_RULES) {
+    const hit = r && r.ruleHits ? String(r.ruleHits[er.id] || 0) : dash;
+    rows.push([er.id, esc(er.desc) + '. 서브쿼리·WHERE에는 적용하지 않음', dash, hit]);
   }
   const vg = r && r.valueGroups ? r.valueGroups : null;
   rows.push(['V1', '값 무시(체크 시): INSERT는 VALUES의 값 자리 전체, 그 외는 문자열·숫자·<code>{ }</code> 값을 "값"으로만 비교', vg ? String(vg[0]) : dash, vg ? String(vg[1]) : dash]);
