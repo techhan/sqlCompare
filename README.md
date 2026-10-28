@@ -71,3 +71,7 @@ UPDATE의 SET 절과 INSERT의 컬럼-값 짝에서만 적용한다. WHERE 절�
 ## 버전
 
 화면 제목 옆에 표시된다. 예전 버전이 보이면 `Ctrl+F5`로 새로고침한다.
+
+## 변경 이력
+
+[CHANGELOG.md](CHANGELOG.md)
