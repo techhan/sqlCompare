@@ -56,6 +56,7 @@ UPDATE의 SET 절과 INSERT의 컬럼-값 짝에서만 적용한다. WHERE 절�
 | A1 | UPDATE_DATE | TOBE 값이 `SYSDATE`면 허용 |
 | A2 | UPDATE_MAN | 양쪽 값이 모두 문자열이면 허용 (ASIS 사용자명 → TOBE 사용자 ID) |
 | A3 | `'0' AS CHK` | TOBE 메인 SELECT 목록에만 있으면 허용 (멀티로우 삭제용 체크 컬럼). 서브쿼리·WHERE에는 적용 안 함 |
+| A4 | DELETE FROM | `DELETE` 바로 뒤 `FROM`이 한쪽에만 있으면 허용 (Oracle에서 FROM 생략 가능) |
 
 ## 하지 않는 것
 
