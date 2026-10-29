@@ -96,6 +96,8 @@ tr.click{cursor:pointer}
 tr.click:hover{background:var(--accent-bg)}
 .kind-d{color:var(--diff-fg);background:var(--diff-bg);padding:2px 8px;border-radius:999px;white-space:nowrap;font-weight:700;font-size:13px}
 .kind{white-space:nowrap}
+td.colname code{font-weight:700}
+td.colname .kor{color:var(--muted);font-size:13px}
 .cnt{color:var(--muted);font-weight:600;font-size:13px}
 td.kind[rowspan]{background:var(--panel);border-right:1px solid var(--line)}
 tr.gstart td{border-top:2px solid var(--line)}
@@ -151,7 +153,7 @@ code{font-family:var(--mono)}
 
 <script>
 'use strict';
-const VERSION = 'v0.8';
+const VERSION = 'v0.9';
 
 /* ===== 공통 차이 허용 규칙 =====
    공통 차이가 늘어나면 이 목록에 추가한다.
@@ -205,14 +207,21 @@ function tokenize(src) {
   const n = src.length;
   let i = 0;
   const push = (type, norm, raw) => toks.push({ type, norm, raw });
+  let cnt = 0, lastEnd = 0;
+  const attach = (text, at) => {          // 같은 줄 끝 주석은 바로 앞 토큰에 붙인다 (컬럼 한글명 표시용)
+    const prev = toks[toks.length - 1], tx = text.trim();
+    if (!prev || !tx || src.slice(lastEnd, at).includes('\n')) return;
+    prev.cmt = prev.cmt ? prev.cmt + ' ' + tx : tx;
+  };
 
   while (i < n) {
+    if (toks.length !== cnt) { cnt = toks.length; lastEnd = i; }
     const c = src[i], c1 = src[i + 1];
     if (WS.has(c)) { i++; continue; }
 
     // 주석: 개행 처리보다 먼저, 따옴표 밖에서만
     if (c === '-' && c1 === '-') {
-      const e = src.indexOf('\n', i); i = e < 0 ? n : e; st.comment++; continue;
+      const e = src.indexOf('\n', i); attach(src.slice(i + 2, e < 0 ? n : e), i); i = e < 0 ? n : e; st.comment++; continue;
     }
     if (c === '/' && c1 === '*') {
       const e = src.indexOf('*/', i + 2);
@@ -220,7 +229,7 @@ function tokenize(src) {
       if (src[i + 2] === '+') {          // 옵티마이저 힌트는 지우지 않는다
         const inner = src.slice(i + 3, e).replace(/[ \t\r\n]+/g, ' ').trim().toUpperCase();
         push('hint', inner ? `/*+ ${inner} */` : '/*+ */', src.slice(i, e + 2)); st.hint++;
-      } else st.comment++;
+      } else { attach(src.slice(i + 2, e), i); st.comment++; }
       i = e + 2; continue;
     }
 
@@ -656,7 +665,101 @@ function compare(aText, bText, valueIgnore) {
   const { hunks, allows, ruleHits } = ctx;
   hunks.forEach((hk, i) => { hk.id = 'h' + i; hk.a.concat(hk.b).forEach(u => { u.hid = hk.id; }); });
   const verdict = hunks.length ? 'diff' : allows.length ? 'allow' : 'same';
+  attachCols(hunks.concat(allows), A, B);
   return { verdict, typeA, typeB, uA: res.uA, uB: res.uB, hunks, allows, stA: A.st, stB: B.st, invA: A.inv, invB: B.inv, ruleHits };
+}
+
+/* ===== 검토 항목의 컬럼명·한글명 찾기 ===== */
+const NOT_COL = new Set(['AS', 'AND', 'OR', 'NOT', 'IS', 'NULL', 'IN', 'LIKE', 'BETWEEN', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+  'DISTINCT', 'SELECT', 'FROM', 'WHERE', 'SET', 'VALUES', 'INTO', 'INSERT', 'UPDATE', 'DELETE', 'GROUP', 'ORDER', 'BY', 'HAVING',
+  'ON', 'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'UNION', 'ALL', 'ASC', 'DESC', 'EXISTS', 'SYSDATE', 'ROWNUM', 'ESCAPE', 'TS', 'D', 'T']);
+const SEG_LEFT = new Set(['SELECT', 'SET', 'WHERE', 'AND', 'OR', 'ON', 'VALUES', 'HAVING', 'BY', 'FROM', 'WHEN', 'THEN', 'ELSE', 'INTO']);
+const SEG_RIGHT = new Set([...SEG_LEFT, 'GROUP', 'ORDER', 'UNION', 'MINUS', 'INTERSECT', 'END']);
+
+function insertPairs(toks) {          // INSERT 컬럼 목록과 VALUES 값 자리 짝
+  const v = toks.findIndex(t => t.depth === 0 && t.type === 'word' && t.norm === 'VALUES');
+  if (v < 1 || !toks[v + 1] || toks[v + 1].norm !== '(' || toks[v - 1].norm !== ')') return [];
+  let close = -1, open = -1;
+  for (let i = v + 2; i < toks.length; i++) if (toks[i].norm === ')' && toks[i].depth === 0) { close = i; break; }
+  for (let i = v - 2; i >= 0; i--) if (toks[i].norm === '(' && toks[i].depth === 0) { open = i; break; }
+  if (close < 0 || open < 0) return [];
+  const cols = splitTop(toks, open + 1, v - 1, 1), vals = splitTop(toks, v + 2, close, 1);
+  if (cols.length !== vals.length) return [];
+  return cols.map((c, k) => ({ col: columnName(toks, c.from, c.to), c, v: vals[k] }));
+}
+function lastCmt(toks, from, to) {
+  for (let i = to - 1; i >= from; i--) if (toks[i] && toks[i].cmt) return toks[i].cmt;
+  return '';
+}
+function segmentAt(toks, idx, d) {
+  let j = idx - 1;
+  for (; j >= 0; j--) {
+    const t = toks[j];
+    if (t.depth < d) break;
+    if (t.depth === d && (t.norm === ',' || (t.type === 'word' && SEG_LEFT.has(t.norm)))) break;
+  }
+  let k = idx + 1;
+  for (; k < toks.length; k++) {
+    const t = toks[k];
+    if (t.depth < d) break;
+    if (t.depth === d && (t.norm === ',' || (t.type === 'word' && SEG_RIGHT.has(t.norm)))) break;
+  }
+  return { from: j + 1, to: k };
+}
+function colInfo(toks, idx) {
+  for (const p of insertPairs(toks)) {
+    if ((idx >= p.v.from && idx < p.v.to) || (idx >= p.c.from && idx < p.c.to))
+      return { col: p.col, kor: lastCmt(toks, p.v.from, p.v.to + 1) || lastCmt(toks, p.c.from, p.c.to + 1) };
+  }
+  const CMP = new Set(['=', '<>', '!=', '^=', '>=', '<=', '<', '>']);
+  for (let d = toks[idx].depth; d >= 0; d--) {
+    const s = segmentAt(toks, idx, d);
+    // 비교식이면 반대편이 컬럼 (값 쪽을 눌렀을 때 컬럼을 보여주기 위해)
+    let op = -1;
+    for (let i = s.from; i < s.to; i++) if (toks[i].depth === d && (CMP.has(toks[i].norm) || (toks[i].type === 'word' && (toks[i].norm === 'LIKE' || toks[i].norm === 'IN')))) { op = i; break; }
+    if (op > s.from) {
+      const lhsCol = columnName(toks, s.from, op), kor = lastCmt(toks, s.from, s.to + 1);
+      if (lhsCol) return { col: lhsCol, kor };
+      if (idx > op) return { col: inlineText([{ toks: toks.slice(s.from, op) }]), kor, expr: true };   // COUNT(*) >= 4 등
+    }
+    let col = null, alias = null;
+    for (let i = s.from; i < s.to; i++) {
+      const t = toks[i], nx = toks[i + 1];
+      if (t.type === 'word' && t.norm === 'AS' && nx && (nx.type === 'word' || nx.type === 'qident')) { alias = alias || nameOf(nx); i++; continue; }
+      if (!(t.type === 'qident' || (t.type === 'word' && !NOT_COL.has(t.norm)))) continue;
+      if (nx && nx.norm === '(') continue;                       // 함수 이름
+      if (toks[i - 1] && toks[i - 1].norm === '.') continue;
+      let name = nameOf(t);
+      while (toks[i + 1] && toks[i + 1].norm === '.' && toks[i + 2] && nameOf(toks[i + 2])) { name = nameOf(toks[i + 2]); i += 2; }
+      if (!col) col = name;
+    }
+    const found = col || alias;
+    if (found) return { col: found, kor: lastCmt(toks, s.from, s.to + 1) };
+    // 서브쿼리 밖으로는 나가지 않는다
+    const open = toks[s.from - 1], first = toks[s.from];
+    if (open && open.norm === '(' && first && first.norm === 'SELECT') break;
+  }
+  return { col: '', kor: '' };
+}
+function korMapOf(toks) {             // TOBE 주석에서 컬럼명 → 한글명
+  const m = new Map();
+  toks.forEach((t, i) => {
+    if (!t.cmt) return;
+    const { col } = colInfo(toks, i);
+    if (col && !m.has(col)) m.set(col, t.cmt);
+  });
+  return m;
+}
+function attachCols(items, A, B) {
+  const kmap = korMapOf(B.toks);
+  for (const it of items) {
+    const useB = it.b.length > 0, units = useB ? it.b : it.a, T = useB ? B.toks : A.toks;
+    const all = units.flatMap(u => u.toks);
+    const t = all.find(x => x.norm !== ',' && x.norm !== '(' && x.norm !== ')') || all[0];
+    const idx = t ? T.indexOf(t) : -1;
+    const info = idx >= 0 ? colInfo(T, idx) : { col: '', kor: '' };
+    it.col = info.col; it.kor = info.kor || (info.col && !info.expr ? kmap.get(info.col) || '' : '');
+  }
 }
 
 /* ===== 화면 ===== */
@@ -780,9 +883,10 @@ function render(r) {
   $('outB').innerHTML = renderSide(r.uB, r.hunks, 'b');
 
   const code = us => us.length ? esc(inlineText(us)) : '<span class="muted">(없음)</span>';
+  const colCell = x => `<td class="colname">${x.col ? `<code>${esc(x.col)}</code>` : '<span class="muted">-</span>'}${x.kor ? `<div class="kor">${esc(x.kor)}</div>` : ''}</td>`;
   let no = 0, html = '';
   r.hunks.forEach(h => {
-    html += `<tr class="click" data-ref="${h.id}"><td>${++no}</td><td class="kind"><span class="kind-d">다름</span></td><td class="code">${code(h.a)}</td><td class="code">${code(h.b)}</td></tr>`;
+    html += `<tr class="click" data-ref="${h.id}"><td>${++no}</td><td class="kind"><span class="kind-d">다름</span></td>${colCell(h)}<td class="code">${code(h.a)}</td><td class="code">${code(h.b)}</td></tr>`;
   });
   const groups = new Map();
   r.allows.forEach(w => { if (!groups.has(w.ruleId)) groups.set(w.ruleId, { label: w.label, items: [] }); groups.get(w.ruleId).items.push(w); });
@@ -791,11 +895,11 @@ function render(r) {
       const head = k === 0
         ? `<td class="kind" rowspan="${g.items.length}"><button type="button" class="rule-link" data-rule="${esc(rid)}" title="적용 규칙으로 이동">${esc(g.label)}</button><span class="cnt"> · ${g.items.length}건</span></td>`
         : '';
-      html += `<tr class="click${k === 0 ? ' gstart' : ''}" data-ref="${w.id}"><td>${++no}</td>${head}<td class="code">${code(w.a)}</td><td class="code">${code(w.b)}</td></tr>`;
+      html += `<tr class="click${k === 0 ? ' gstart' : ''}" data-ref="${w.id}"><td>${++no}</td>${head}${colCell(w)}<td class="code">${code(w.a)}</td><td class="code">${code(w.b)}</td></tr>`;
     });
   }
   $('diffList').innerHTML = html
-    ? `<table><thead><tr><th>No</th><th>구분</th><th style="width:38%">ASIS</th><th style="width:38%">TOBE</th></tr></thead><tbody>${html}</tbody></table>`
+    ? `<table><thead><tr><th>No</th><th>구분</th><th>컬럼</th><th style="width:32%">ASIS</th><th style="width:32%">TOBE</th></tr></thead><tbody>${html}</tbody></table>`
     : '<span class="muted">검토할 항목 없음</span>';
   renderRules(r);
 }
