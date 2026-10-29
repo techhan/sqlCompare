@@ -79,6 +79,8 @@ pre.out{margin:0;min-height:45vh;max-height:75vh;overflow:auto;white-space:pre-w
 .inv{outline:1px solid var(--err);color:var(--err);border-radius:2px}
 .gap{background:var(--diff-bg);color:var(--diff-fg);border-radius:3px;padding:0 2px}
 .flash{animation:fl 1.2s ease-out}
+pre.out span[data-ref]{cursor:pointer}
+pre.out span[data-ref]:hover{outline:1px solid currentColor}
 @keyframes fl{0%{outline:3px solid #f59e0b}100%{outline:3px solid transparent}}
 .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:12px 0 0}
 .legend span.sw{display:inline-block;padding:0 6px;border-radius:3px;margin-right:4px}
@@ -149,7 +151,7 @@ code{font-family:var(--mono)}
 
 <script>
 'use strict';
-const VERSION = 'v0.7';
+const VERSION = 'v0.8';
 
 /* ===== 공통 차이 허용 규칙 =====
    공통 차이가 늘어나면 이 목록에 추가한다.
@@ -686,7 +688,7 @@ function renderSide(units, hunks, side) {
     if (empty) { const pos = side === 'a' ? h.aPos : h.bPos; if (!markers.has(pos)) markers.set(pos, []); markers.get(pos).push(h.id); }
   }
   const used = new Set(); let html = '', prev = null;
-  const gap = k => (markers.get(k) || []).map(id => `<span class="gap" id="${side}-${id}" title="반대편에만 있는 부분">▸</span>`).join('');
+  const gap = k => (markers.get(k) || []).map(id => `<span class="gap" id="${side}-${id}" data-ref="${id}" title="반대편에만 있는 부분 · 눌러서 검토 항목으로 이동">▸</span>`).join('');
   units.forEach((u, k) => {
     html += gap(k);
     let inner = '';
@@ -698,8 +700,8 @@ function renderSide(units, hunks, side) {
     if (u.mark === 'diff' || u.mark === 'allow') {
       const ref = u.mark === 'diff' ? u.hid : u.id;
       const idAttr = used.has(ref) ? '' : ` id="${side}-${ref}"`; used.add(ref);
-      const title = u.mark === 'allow' ? ` title="${esc(u.label)}"` : '';
-      html += `<span class="${u.mark === 'diff' ? 'd' : 'al'}"${idAttr}${title}>${inner}</span>`;
+      const title = ` title="${u.mark === 'allow' ? esc(u.label) + ' · ' : ''}눌러서 검토 항목으로 이동"`;
+      html += `<span class="${u.mark === 'diff' ? 'd' : 'al'}" data-ref="${ref}"${idAttr}${title}>${inner}</span>`;
     } else html += inner;
   });
   html += gap(units.length);
@@ -830,6 +832,14 @@ if (typeof document !== 'undefined') {
     chk.checked = false; autoType = ''; prevDml = '';
     syncToggle(); render(null); $('asis').focus();
   });
+  const toReview = e => {
+    const sp = e.target.closest('span[data-ref]'); if (!sp) return;
+    const row = document.querySelector(`#diffList tr[data-ref="${sp.dataset.ref}"]`); if (!row) return;
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row.classList.remove('flash-row'); void row.offsetWidth; row.classList.add('flash-row');
+  };
+  $('outA').addEventListener('click', toReview);
+  $('outB').addEventListener('click', toReview);
   $('diffList').addEventListener('click', e => {
     const link = e.target.closest('.rule-link');
     if (link) {
