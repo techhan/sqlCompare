@@ -102,12 +102,11 @@ ASIS·TOBE SQL을 붙여 넣으면 같은 쿼리인지 판정하고, 다른 곳�
 
 | 예시 | 결과 |
 |---|---|
-| 표기만 다름 | ![](images/ex1-same.png) |
-| 컬럼 누락·조건값 실수 | ![](images/ex2-diff.png) |
-| INSERT | ![](images/ex3-insert.png) |
-| UPDATE | ![](images/ex4-update.png) |
-| CHK 컬럼 | ![](images/ex5-chk.png) |
-| 로그 정보가 섞임 (잘못된 입력) | ![](images/ex6-noise.png) |
+| 표기만 다름 | <img width="1733" height="826" alt="image" src="https://github.com/user-attachments/assets/ec1242bd-4e41-4922-a9da-560782f7129c" /> |
+| 컬럼 누락·조건값 실수 | <img width="1722" height="805" alt="image" src="https://github.com/user-attachments/assets/1413ed7d-9d5b-4780-aa03-ac8abf8defe1" /> |
+| INSERT | <img width="1722" height="782" alt="image" src="https://github.com/user-attachments/assets/97c79589-9e78-4954-9aff-7678befc3d88" /> |
+| UPDATE | <img width="1730" height="859" alt="image" src="https://github.com/user-attachments/assets/40289094-12d2-40f6-bf8a-c00b2e356c0a" /> |
+| CHK 컬럼 | <img width="1735" height="767" alt="image" src="https://github.com/user-attachments/assets/dc7690bd-e6b0-4920-ae70-2f49aee7e1ab" /> |
 
 ---
 
